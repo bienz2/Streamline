@@ -1,38 +1,99 @@
-typedef struct {
+#include <mpi.h>
+#include <vector>
+
+using namespace std;
+
+struct topo_data{
+    int rank_ordering;
+    int ppn;
+    int num_nodes;
+    int rank_node;
+    MPI_Comm local_comm;
+
+    topo_data(MPI_Comm mpi_comm)
+    {
+        int rank, num_procs;
+        MPI_Comm_rank(mpi_comm, &rank);
+        MPI_Comm_size(mpi_comm, &num_procs);
+
+        char* proc_layout_c = getenv("MPICH_RANK_REORDER_METHOD");
+        char* ppn_char = getenv("PPN");
+
+        rank_ordering = 1;
+        if (proc_layout_c)
+        {
+            rank_ordering = atoi(proc_layout_c);
+        }
+        ppn = 16;
+        if (ppn_char)
+        {
+            ppn = atoi(ppn_char);
+        }
+
+        num_nodes = num_procs / ppn;
+        if (num_procs % ppn) num_nodes++;
+
+        if (rank_ordering == 0)
+        {
+            rank_node = rank % num_nodes;
+        }
+        else if (rank_ordering == 1)
+        {
+            rank_node = rank / ppn;
+        }
+        else if (rank_ordering == 2)
+        {
+            if ((rank / num_nodes) % 2 == 0)
+            {
+                rank_node = rank % num_nodes;
+            }
+            else
+            {
+                rank_node = num_nodes - (rank % num_nodes) - 1;
+            }
+        }
+        MPI_Comm_split(mpi_comm, rank_node, rank, &local_comm);   
+    }
+};
+
+struct comm_data{
     int num_msgs;
     int size_msgs;
     int* procs;
     int* indptr;
     int* indices;
-} comm_data;
+};
 
-typedef struct {
+struct comm_pkg{
     comm_data* send_data;
     comm_data* recv_data;
-
+    
     comm_pkg()
     {
         send_data = new comm_data();
         recv_data = new comm_data();
     }
-} comm_pkg;
+};
 
-typedef struct {
+struct NAPComm{
     comm_pkg* local_L_comm;
     comm_pkg* local_R_comm;
     comm_pkg* local_S_comm;
     comm_pkg* global_comm;
+    topo_data* topo_info;
 
-    NAPComm()
+    NAPComm(topo_data* _topo_info)
     {
         local_L_comm = new comm_pkg();
         local_R_comm = new comm_pkg();
         local_S_comm = new comm_pkg();
         global_comm = new comm_pkg();
+        topo_info = _topo_info;
     }
-} NAPComm;
+};
 
-template <typename T>
+
+/*template <typename T>
 typedef struct {
     T* recv_data;
     T* local_L_recv_data;
@@ -40,7 +101,7 @@ typedef struct {
     T* global_recv_buffer;
     MPI_Request* global_send_requests;
     MPI_Request* global_recv_requests;
-} NAPData;
+} NAPData;*/
 
 static MPI_Datatype get_type(int* buffer)
 {
@@ -51,7 +112,7 @@ static MPI_Datatype get_type(double* buffer)
     return MPI_DOUBLE;
 }
 
-template <typename T>
+/*template <typename T>
 void MPI_intra_comm(const comm_pkg* comm, const T* send_data, T** recv_data,
         const int tag, const MPI_Comm local_comm, const MPI_Datatype mpi_type)
 {
@@ -268,38 +329,134 @@ MPI_NAPwait(const NAPComm* nap_comm, NAPData* nap_data)
     delete[] global_recv_requests;
 
     nap_data->recv_data = NULL;
+}*/
+
+
+
+// TODO -- find better way to implement this... don't want to count on
+// environment variable
+
+
+int get_node(const int proc, const topo_data* topo_info)
+{
+    if (topo_info->rank_ordering == 0)
+    {
+        return proc % topo_info->num_nodes;
+    }
+    else if (topo_info->rank_ordering == 1)
+    {
+        return proc / topo_info->ppn;
+    }
+    else if (topo_info->rank_ordering == 2)
+    {
+        if ((proc / topo_info->num_nodes) % 2 == 0)
+        {
+            return proc % topo_info->num_nodes;
+        }
+        else
+        {
+            return topo_info->num_nodes - (proc % topo_info->num_nodes) - 1;
+        }
+    }
+    else
+    { 
+        int rank;
+        MPI_Comm_rank(MPI_COMM_WORLD, &rank);
+        if (rank == 0)
+        {
+            printf("This MPI rank ordering is not supported!\n");
+        }
+        return -1;
+    }
 }
+int get_local_proc(const int proc, const topo_data* topo_info)
+{
+    if (topo_info->rank_ordering == 0 || topo_info->rank_ordering == 2)
+    {
+        return proc / topo_info->num_nodes;
+    }
+    else if (topo_info->rank_ordering == 1)
+    {
+        return proc % topo_info->ppn;
+    }
+    else
+    { 
+        int rank;
+        MPI_Comm_rank(MPI_COMM_WORLD, &rank);
+        if (rank == 0)
+        {
+            printf("This MPI rank ordering is not supported!\n");
+        }
+        return -1;
+    }
+}
+
+int get_global_proc(const int node, const int local_proc, const topo_data* topo_info)
+{
+    if (topo_info->rank_ordering == 0)
+    {
+        return local_proc * topo_info->num_nodes + node;
+    }
+    else if (topo_info->rank_ordering == 1)
+    {
+        return local_proc + (node * topo_info->ppn);
+    }
+    else if (topo_info->rank_ordering == 2)
+    {
+        if (local_proc % 2 == 0)
+        {
+            return local_proc * topo_info->num_nodes + node;
+        }
+        else
+        {
+            return local_proc * topo_info->num_nodes + topo_info->num_nodes - node - 1;                
+        }
+    }
+    else
+    { 
+        int rank;
+        MPI_Comm_rank(MPI_COMM_WORLD, &rank);
+        if (rank == 0)
+        {
+            printf("This MPI rank ordering is not supported!\n");
+        }
+        return -1;
+    }
+}
+
 
 void map_procs_to_nodes(NAPComm* nap_comm, const int orig_num_msgs, const int* orig_procs, const int* orig_indptr,
         std::vector<int>& msg_nodes, std::vector<int>& msg_node_to_local, MPI_Comm mpi_comm, 
-        int init_inc = 1, init_local_proc = -1)
+        int init_inc = 1, int init_local_proc = -1)
 {    
-    int proc, size, node;
-    std::vector<int> node_sizes;
-
     int rank, num_procs;
     int local_rank, local_num_procs;
-    MPI_Comm local_comm = nap_comm->local_comm;
     MPI_Comm_rank(mpi_comm, &rank);
     MPI_Comm_size(mpi_comm, &num_procs);
+    MPI_Comm& local_comm = nap_comm->topo_info->local_comm;
     MPI_Comm_rank(local_comm, &local_rank);
-    MPI_Comm_size(local_Comm, &local_num_procs);
-    int num_nodes = num_procs / local_num_procs;
-    if (num_procs % local_num_procs) num_nodes++;
-    int rank_node = get_node(rank);
+    MPI_Comm_size(local_comm, &local_num_procs);
+
+    int proc, size, node;
+    int local_proc;
+    int inc;
+    std::vector<int> node_sizes;
+
+    int num_nodes = nap_comm->topo_info->num_nodes;
+    int rank_node = nap_comm->topo_info->rank_node;
 
     // Map local msg_procs to local msg_nodes
     node_sizes.resize(num_nodes, 0);
     for (int i = 0; i < orig_num_msgs; i++)
     {
-        proc = proc_procs[i];
+        proc = orig_procs[i];
         size = orig_indptr[i+1] - orig_indptr[i];
-        node = get_node(proc);
+        node = get_node(proc, nap_comm->topo_info);
         node_sizes[node] += size;
     }
     
     // Gather all send nodes and sizes among ranks local to node
-    MPI_Allreduce(MPI_IN_PLACE, &node_sizes, num_nodes, MPI_INT, MPI_SUM, local_comm);
+    MPI_Allreduce(MPI_IN_PLACE, node_sizes.data(), num_nodes, MPI_INT, MPI_SUM, local_comm);
     for (int i = 0; i < num_nodes; i++)
     {
         if (node_sizes[i] && i != rank_node)
@@ -322,7 +479,7 @@ void map_procs_to_nodes(NAPComm* nap_comm, const int orig_num_msgs, const int* o
         msg_node_to_local[i] = local_proc;
 
         if (local_proc == local_num_procs - 1 && i > 0)
-            inc = -1
+            inc = -1;
         else if (local_proc == 0 && i > 0)
            inc = 1; 
         else
@@ -332,12 +489,16 @@ void map_procs_to_nodes(NAPComm* nap_comm, const int orig_num_msgs, const int* o
 
 void form_local_comm(int orig_num_sends, int* orig_send_procs, int* orig_send_ptr,
         int* orig_send_indices, std::vector<int>& nodes_to_local, comm_data* send_data, 
-        comm_data* recv_data, std::vector<int>& recv_nodes, MPI_Comm mpi_comm, MPI_Comm local_comm, int tag)
+        comm_data* recv_data, comm_data* local_data, std::vector<int>& recv_nodes, 
+        MPI_Comm mpi_comm, MPI_Comm local_comm, topo_data* topo_info, int tag)
 {   
     // Declare variables
-    int global_proc;
-    int size;
-    int node;
+    int global_proc, local_proc;
+    int size, ctr, start_ctr;
+    int start, end, node;
+    int idx, proc_idx;
+    int proc;
+    MPI_Status recv_status;
 
     int num_sends = 0;
     int size_sends = 0;
@@ -353,11 +514,12 @@ void form_local_comm(int orig_num_sends, int* orig_send_procs, int* orig_send_pt
     int* recv_procs;
     int* recv_indptr;
     int* recv_indices;
+    std::vector<int> recv_idx_nodes;
     std::vector<int> recv_buffer;
     
+    std::vector<int> orig_to_node;
     std::vector<int> orig_to_local;
     std::vector<int> local_idx;
-    MPI_Comm local_comm = nap_comm->local_comm;
 
     // MPI_Information
     int rank, num_procs;
@@ -369,6 +531,7 @@ void form_local_comm(int orig_num_sends, int* orig_send_procs, int* orig_send_pt
 
     // Initialize variables
     orig_to_local.resize(orig_num_sends);
+    orig_to_node.resize(orig_num_sends);
     local_idx.resize(local_num_procs);
     send_sizes.resize(local_num_procs, 0);
     send_procs = new int[local_num_procs];
@@ -376,25 +539,39 @@ void form_local_comm(int orig_num_sends, int* orig_send_procs, int* orig_send_pt
     recv_procs = new int[local_num_procs];
     recv_indptr = new int[local_num_procs + 1];
 
+    local_data->num_msgs = 0;
+    local_data->procs = new int[local_num_procs];
+    local_data->indptr = new int[local_num_procs];
+
     // Form local_S_comm
+    local_data->indptr[0] = 0;
     for (int i = 0; i < orig_num_sends; i++)
     {
         global_proc = orig_send_procs[i];
         size = orig_send_ptr[i+1] - orig_send_ptr[i];
-        node = get_node(global_proc);
-        if (rank_node != node)
+        node = get_node(global_proc, topo_info);
+        if (topo_info->rank_node != node)
         {
             local_proc = nodes_to_local[node];
-            if (send_local[local_proc] == 0)
+            if (send_sizes[local_proc] == 0)
             {
                 local_idx[local_proc] = num_sends;
                 send_procs[num_sends++] = local_proc;
             }
             orig_to_local[i] = local_proc;
+            orig_to_node[i] = node;
             send_sizes[local_proc] += size;
         }
-        else orig_to_local[i] = -1;
-    }
+        else 
+        {
+            orig_to_local[i] = -1;
+            local_data->procs[local_data->num_msgs] = get_local_proc(global_proc, topo_info);
+            local_data->indptr[local_data->num_msgs + 1] = local_data->indptr[local_data->num_msgs] + size;
+            local_data->num_msgs++;
+        }
+    }        
+    local_data->size_msgs = local_data->indptr[local_data->num_msgs];
+    
     send_indptr[0] = 0;
     for (int i = 0; i < num_sends; i++)
     {
@@ -403,26 +580,36 @@ void form_local_comm(int orig_num_sends, int* orig_send_procs, int* orig_send_pt
         send_sizes[local_proc] = 0;
     }
     size_sends = send_indptr[num_sends];
+    local_data->indices = new int[size_sends];
+    size_sends = 0;
     
     // Allocate send_indices and fill vector
-    int* send_indices = new int[size_sends];
-    for (int i = 0; i < n_sends; i++)
+    send_indices = new int[size_sends];
+    for (int i = 0; i < orig_num_sends; i++)
     {
         local_proc = orig_to_local[i];
         proc_idx = local_idx[local_proc];
-        if (local_proc == -1) continue;
-
-        start = send_indptr[i];
-        end = send_indptr[i+1];
-        for (int j = start; j < end; j++)
+        start = orig_send_ptr[i];
+        end = orig_send_ptr[i+1];
+        if (local_proc == -1) 
         {
-            idx = send_indptr[proc_idx] + send_sizes[local_proc]++;
-            send_indices[idx] = orig_send_indices[j];
+            for (int j = start; j < end; j++)
+            {
+                local_data->indices[size_sends++] = orig_send_indices[j];
+            }
+        }
+        else
+        {
+            for (int j = start; j < end; j++)
+            {
+                idx = send_indptr[proc_idx] + send_sizes[local_proc]++;
+                send_indices[idx] = orig_send_indices[j];
+            }
         }
     }
 
-    /* Send 'local_S_comm send' info (to form local_S recv) */
-    MPI_Allreduce(&MPI_IN_PLACE, &send_sizes, PPN, MPI_INT, MPI_SUM, local_comm);
+    // Send 'local_S_comm send' info (to form local_S recv) 
+    MPI_Allreduce(MPI_IN_PLACE, &send_sizes, local_num_procs, MPI_INT, MPI_SUM, local_comm);
     size_recvs = send_sizes[local_rank];
     recv_indices = new int[size_recvs];
     recv_idx_nodes.resize(size_recvs);
@@ -434,8 +621,8 @@ void form_local_comm(int orig_num_sends, int* orig_send_procs, int* orig_send_pt
     for (int i = 0; i < num_sends; i++)
     {
         proc = send_procs[i];
-        start = send_ptr[i];
-        end = send_ptr[i+1];
+        start = send_indptr[i];
+        end = send_indptr[i+1];
         for (int j = start; j < end; j++)
         {
             idx = send_indices[j];
@@ -485,7 +672,7 @@ void form_local_comm(int orig_num_sends, int* orig_send_procs, int* orig_send_pt
     recv_data->indices = recv_indices;
 }
 
-void form_global_comm(comm_data* local_data, comm_data* global_data, std::vector<int> local_data_nodes, 
+/*void form_global_comm(comm_data* local_data, comm_data* global_data, std::vector<int> local_data_nodes, 
         MPI_Comm mpi_comm, int tag)
 {
     int num_nodes;
@@ -504,7 +691,7 @@ void form_global_comm(comm_data* local_data, comm_data* global_data, std::vector
     MPI_Comm_rank(mpi_comm, &rank);
     MPI_Comm_size(mpi_comm, &num_procs);
     MPI_Comm_rank(local_comm, &local_rank);
-    MPI_Comm_size(local_Comm, &local_num_procs);
+    MPI_Comm_size(local_comm, &local_num_procs);
     int num_nodes = num_procs / local_num_procs;
     if (num_procs % local_num_procs) num_nodes++;
     int rank_node = get_node(rank);
@@ -594,6 +781,8 @@ void update_global_comm(NAPComm* nap_comm)
     int* send_buffer = NULL;
     int send_tag = 32148532;
     int recv_tag = 52395234;
+    std::vector<int> send_nodes(num_nodes, 0);
+    std::vector<int> recv_nodes(num_nodes, 0);
     if (n_msgs) 
     {
         requests = new MPI_Request[n_msgs];
@@ -616,41 +805,119 @@ void update_global_comm(NAPComm* nap_comm)
                 &requests[n_sends + i]);
     }
 
-    MPI_Testall(
+    MPI_Testall(n_msgs, requests, &finished, MPI_STATUSES_IGNORE);
+    while (!finished)
+    {
+        MPI_Iprobe(MPI_ANY_SOURCE, MPI_ANY_TAG, &msg_avail, &recv_status);
+        if (msg_avail)
+        {
+            proc = recv_status.MPI_SOURCE;
+            tag = recv_status.MPI_TAG;
+            MPI_Recv(&node, 1, MPI_INT, proc, tag, mpi_comm, &recv_status);
+            if (tag == send_tag)
+            {
+                send_nodes[node] = proc;
+            }
+            else
+            {
+                recv_nodes[node] = proc;
+            }
+        }
+        MPI_Testall(n_msgs, requests, &finished, MPI_STATUSES_IGNORE);
+                int source, int tag, MPI_Comm comm, int *flag, 
+               MPI_Status *status
+    }
+    MPI_Ibarrier(mpi_comm, &barrier_request);
+    MPI_Test(&barrier_request, &finished, MPI_STATUS_IGNORE);
+    while (!finished)
+    {
+        MPI_Iprobe(MPI_ANY_SOURCE, MPI_ANY_TAG, &msg_avail, &recv_status);
+        if (msg_avail)
+        {
+            proc = recv_status.MPI_SOURCE;
+            tag = recv_status.MPI_TAG;
+            MPI_Recv(&node, 1, MPI_INT, proc, tag, mpi_comm, &recv_status);
+            if (tag == send_tag)
+            {
+                send_nodes[node] = proc;
+            }
+            else
+            {
+                recv_nodes[node] = proc;
+            }
+        }
+        MPI_Test(&barrier_request, &finished, MPI_STATUS_IGNORE);   
+    }
+
+    MPI_Allreduce(MPI_IN_PLACE, &send_nodes, num_nodes, MPI_INT, MPI_SUM, local_comm);
+    for (int i = 0; i < n_sends; i++)
+    {
+        node = nap_comm->global_comm->send_data->procs[i];
+        nap_comm->global_comm->send_data->procs[i] = send_nodes[node];
+    }
+    for (int i = 0; i < n_recvs; i++)
+    {
+        node = nap_comm->global_comm->recv_data->procs[i];
+        nap_comm->global_comm->recv_data>procs[i] = recv_nodes[node];
+    }
 }
 
+// Need local_R_comm->send_data->indices (positions from global->recv that are
+// sent)
+void update_indices(NAPComm* nap_comm)
+{
+    std::map<int, int> global_recv_indices;
+    for (int i = 0; i < nap_comm->global_comm->recv_data->size_msgs; i++)
+    {
+        idx = nap_comm->global_comm->recv_data->indices[i];
+        global_recv_indices[idx] = i;
+    }
+
+    for (int i = 0; i < nap_comm->local_R_comm->send_data->size_msgs; i++)
+    {
+        idx = nap_comm->local_R_comm->send_data->indices[i];
+        nap_comm->local_R_comm->send_data->indices[i] = global_recv_indices[idx];
+    }
+}*/
+
 /* TODO - NEED METHODS:
- *     get_ppn()
- *     get_num_nodes()
- *     get_node(global_proc)
- *     get_global_proc(node, local_proc)
- *     get_local_proc(global_proc, node)
  *     form_local_comm()
  */
 void MPI_NAPinit(const int n_sends, const int* send_procs, const int* send_indptr, 
-        const int* send_indices, const int n_recv, const int* recv_procs, 
+        const int* send_indices, const int n_recvs, const int* recv_procs, 
         const int* recv_indptr, const int* recv_indices, const MPI_Comm mpi_comm,
-        NapComm** nap_comm_ptr)
+        NAPComm** nap_comm_ptr)
 {
     // Get MPI Information
     int rank, num_procs;
     MPI_Comm_rank(mpi_comm, &rank);
     MPI_Comm_size(mpi_comm, &num_procs);
 
-    MPI_Comm local_comm;
-    int ppn = get_ppn();
-    int num_nodes = get_num_nodes();
-    form_local_comm(&local_comm);
-    int rank_node = get_node(rank);
+    // Create topo_data object
+    topo_data* topology_info = new topo_data(mpi_comm);
+
 
     // Initialize structure
-    NapComm* nap_comm = new NapComm();
+    NAPComm* nap_comm = new NAPComm(topology_info);
 
+    // Find global send nodes
+    std::vector<int> send_nodes;
+    std::vector<int> send_node_to_local;
+    map_procs_to_nodes(nap_comm, n_sends, send_procs, send_indptr, send_nodes, send_node_to_local, 
+            mpi_comm, 1, -1);
 
-    
+    // Find global recv nodes
+    std::vector<int> recv_nodes;
+    std::vector<int> recv_node_to_local;
+    map_procs_to_nodes(nap_comm, n_recvs, recv_procs, recv_indptr, recv_nodes, recv_node_to_local, 
+            mpi_comm, -1, -16);
+
+    // Initialize local_S_comm
+
+    *nap_comm_ptr = nap_comm;
 }
 
-MPI_NAPdestroy(NAPComm** nap_comm_ptr)
+void MPI_NAPdestroy(NAPComm** nap_comm_ptr)
 {
     NAPComm* nap_comm = *nap_comm_ptr;
     delete[] nap_comm;

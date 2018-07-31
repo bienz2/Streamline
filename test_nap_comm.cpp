@@ -10,38 +10,79 @@
 #include <vector>
 #include <set>
 
-//TODO -- need to originally send global indices (to remove duplicates)
-int main(int argc, char *argv[])
+struct MPI_Data
 {
-    MPI_Init(&argc, &argv);
+    int num_msgs;
+    int size_msgs; 
+    std::vector<int> procs;
+    std::vector<int> indptr;
+    std::vector<int> indices;
+    std::vector<MPI_Request> requests;
+    std::vector<int> buffer;
+};
+
+void standard_communication(std::vector<int>& send_vals, 
+        std::vector<int>& recv_vals, int tag,
+        MPI_Data* send_data, MPI_Data* recv_data)
+{
+    int proc, start, end, idx;
+
+    for (int i = 0; i < send_data->num_msgs; i++)
+    {
+        proc = send_data->procs[i];
+        start = send_data->indptr[i];
+        end = send_data->indptr[i+1];
+        for (int j = start; j < end; j++)
+        {
+            idx = send_data->indices[j];
+            send_data->buffer[j] = send_vals[idx];
+        }
+        MPI_Isend(&send_data->buffer[start], end - start, MPI_INT, proc, tag,
+                MPI_COMM_WORLD, &send_data->requests[i]);
+    }
+
+    for (int i = 0; i < recv_data->num_msgs; i++)
+    {
+        proc = recv_data->procs[i];
+        start = recv_data->indptr[i];
+        end = recv_data->indptr[i+1];
+        MPI_Irecv(&recv_vals[start], end - start, MPI_INT, proc, tag, 
+                MPI_COMM_WORLD, &recv_data->requests[i]);
+    }
+    
+    if (send_data->num_msgs)
+    {
+        MPI_Waitall(send_data->num_msgs, send_data->requests.data(), 
+                MPI_STATUSES_IGNORE);
+    }
+    if (recv_data->num_msgs)
+    {
+        MPI_Waitall(recv_data->num_msgs, recv_data->requests.data(), 
+                MPI_STATUSES_IGNORE);
+    }
+} 
+
+// Form random communication
+void form_initial_communicator(int local_size, MPI_Data* send_data, MPI_Data* recv_data)
+{
+    // Get MPI Information
     int rank, num_procs;
     MPI_Comm_rank(MPI_COMM_WORLD, &rank);
     MPI_Comm_size(MPI_COMM_WORLD, &num_procs);
 
-    int n_sends = 7;
-    int size_per_send = 25;
-    int local_size = 10000;
-    std::set<int> send_proc_set;
-    std::vector<int> send_procs;
-    std::vector<int> send_ptr;
-    std::vector<int> send_indices;
-    std::vector<int> send_requests;
-
-    int n_recvs;
-    std::vector<int> recv_procs;
-    std::vector<int> recv_ptr;
-    std::vector<int> recv_indices;
-    std::vector<int> recv_buffer(size_per_send);
+    // Declare Variables
     srand(49352034 + rank);
+    int n_sends = (rand() % 10) + 1; // Between 1 and 10 msgs sent
+    int first_idx = local_size * rank;
+    int last_idx = local_size * (rank + 1) - 1;
     int tag = 4935;
-    MPI_Status recv_status;
-    MPI_Request barrier_request;
-    int finished, msg_avail;
     int start, end, proc;
-    int size;
-    int ctr;
-
+    int size, ctr;
+    std::vector<int> comm_procs(num_procs, 0);
+    MPI_Status recv_status;
+    
     // Create standard communication
+    // Random send procs / data
     for (int i = 0; i < n_sends; i++)
     {
         proc = rand() % num_procs;
@@ -49,86 +90,151 @@ int main(int argc, char *argv[])
         {
             proc = rand() % num_procs;    
         }
-        send_proc_set.insert(proc);
+        comm_procs[proc] = 1;
     }
-    for (std::set<int>::iterator it = send_proc_set.begin();
-            it != send_proc_set.end(); ++it)
+    for (int i = 0; i < num_procs; i++)
     {
-        send_procs.push_back(*it);
-    }
-    n_sends = send_procs.size();
-    send_requests.resize(n_sends);
-
-    ctr = 0;
-    int first_idx = rank * local_size;
-    send_ptr.push_back(0);
-    for (int i = 0; i < n_sends; i++)
-    {
-        for (int j = 0; j < size_per_send; j++)
+        if (comm_procs[i])
         {
-            send_indices.push_back(first_idx + ctr++);
+            send_data->procs.push_back(i);
         }
-        send_ptr.push_back(send_indices.size());
+    }
+    send_data->num_msgs = send_data->procs.size();
+    send_data->requests.resize(send_data->num_msgs);
+    send_data->indptr.resize(send_data->num_msgs + 1);
+    send_data->requests.resize(send_data->num_msgs);
+
+    ctr = first_idx;
+    send_data->indptr[0] = 0;
+    for (int i = 0; i < send_data->num_msgs; i++)
+    {
+        size = (rand() % local_size) + 1;
+        for (int j = 0; j < size; j++)
+        {
+            send_data->indices.push_back(ctr++);
+            if (ctr > last_idx) ctr = first_idx;
+        }
+        send_data->indptr[i+1] = send_data->indices.size();
+    }
+    send_data->size_msgs = send_data->indices.size();
+    send_data->buffer.resize(send_data->size_msgs);
+
+    // Form recv_data (first gather number of messages sent to rank)
+    MPI_Allreduce(MPI_IN_PLACE, comm_procs.data(), num_procs, MPI_INT,
+            MPI_SUM, MPI_COMM_WORLD);
+    recv_data->num_msgs = comm_procs[rank];
+    recv_data->procs.resize(recv_data->num_msgs);
+    recv_data->indptr.resize(recv_data->num_msgs + 1);
+    recv_data->requests.resize(recv_data->num_msgs);
+
+    for (int i = 0; i < send_data->num_msgs; i++)
+    {
+        proc = send_data->procs[i];
+        start = send_data->indptr[i];
+        end = send_data->indptr[i+1];
+        send_data->buffer[i] = end - start;
+        MPI_Isend(&(send_data->buffer[i]), 1, MPI_INT, proc, tag, 
+                MPI_COMM_WORLD, &send_data->requests[i]);
     }
 
-    recv_ptr.push_back(0);
-    for (int i = 0; i < n_sends; i++)
+    recv_data->indptr[0] = 0;
+    for (int i = 0; i < recv_data->num_msgs; i++)
     {
-        proc = send_procs[i];
-        start = send_ptr[i];
-        end = send_ptr[i+1];
-        MPI_Isend(&send_indices[start], end - start, MPI_INT, proc, tag, 
-                MPI_COMM_WORLD, &send_requests[i]);
+        MPI_Probe(MPI_ANY_SOURCE, tag, MPI_COMM_WORLD, &recv_status);
+        proc = recv_status.MPI_SOURCE;
+        MPI_Recv(&size, 1, MPI_INT, proc, tag, MPI_COMM_WORLD, &recv_status);
+        recv_data->procs[i] = proc;
+        recv_data->indptr[i+1] = recv_data->indptr[i] + size;
     }
-    MPI_Testall(n_sends, send_requests.data(), &finished, MPI_STATUSES_IGNORE);
-    while (!finished)
-    {
-        MPI_Iprobe(MPI_ANY_SOURCE, tag, MPI_COMM_WORLD, &msg_avail, &recv_status);
-        if (msg_avail)
-        {
-            MPI_Get_count(&recv_status, MPI_INT, &size);
-            proc = recv_status.MPI_SOURCE;
-            MPI_Recv(&recv_buffer[0], size, MPI_INT, proc, tag, MPI_COMM_WORLD, &recv_status);
-            recv_procs.push_back(proc);
-            for (int i = 0; i < size; i++)
-            {
-                recv_indices.push_back(recv_buffer[i]);
-            }
-            recv_ptr.push_back(recv_indices.size());
-        }
-        MPI_Testall(n_sends, send_requests.data(), &finished, MPI_STATUSES_IGNORE);        
-    } 
-    MPI_Ibarrier(MPI_COMM_WORLD, &barrier_request);
-    MPI_Test(&barrier_request, &finished, MPI_STATUS_IGNORE);
-    while (!finished)
-    {
-        MPI_Iprobe(MPI_ANY_SOURCE, tag, MPI_COMM_WORLD, &msg_avail, &recv_status);
-        if (msg_avail)
-        {
-            MPI_Get_count(&recv_status, MPI_INT, &size);
-            proc = recv_status.MPI_SOURCE;
-            MPI_Recv(&recv_buffer[0], size, MPI_INT, proc, tag, MPI_COMM_WORLD, &recv_status);
-            recv_procs.push_back(proc);
-            for (int i = 0; i < size; i++)
-            {
-                recv_indices.push_back(recv_buffer[i]);
-            }
-            recv_ptr.push_back(recv_indices.size());
-        }
-        MPI_Test(&barrier_request, &finished, MPI_STATUS_IGNORE);
-    }
-    n_recvs = recv_procs.size();
+    recv_data->size_msgs = recv_data->indptr[recv_data->num_msgs];
+    recv_data->buffer.resize(recv_data->size_msgs);
 
-    for (int i = 0; i < n_recvs; i++)
+    if (send_data->num_msgs)
     {
-        proc = recv_procs[i];
-    } 
+        MPI_Waitall(send_data->num_msgs, send_data->requests.data(),
+                MPI_STATUSES_IGNORE);
+    }
+}
+
+
+int main(int argc, char *argv[])
+{
+    // Initialize MPI
+    MPI_Init(&argc, &argv);
+
+    // Get MPI Information
+    int rank, num_procs;
+    MPI_Comm_rank(MPI_COMM_WORLD, &rank);
+    MPI_Comm_size(MPI_COMM_WORLD, &num_procs);
+
+    // Initial communication info (standard)
+    int local_size = 10000; // Number of variables each rank stores
+    MPI_Data send_data;
+    MPI_Data recv_data;
+    form_initial_communicator(local_size, &send_data, &recv_data);
+
+    // Determine unique global indices (map from send indices to recv indicies)
+    int first = local_size * rank;
+    std::vector<int> global_send_idx(send_data.size_msgs);
+    std::vector<int> global_recv_idx(recv_data.size_msgs);
+    int tag = 29354;
+    for (int i = 0; i < send_data.num_msgs; i++)
+    {
+        int proc = send_data.procs[i];
+        int start = send_data.indptr[i];
+        int end = send_data.indptr[i+1];
+        for (int j = start; j < end; j++)
+        {
+            int idx = send_data.indices[j];
+            global_send_idx[j] = first + idx;
+        }
+        MPI_Isend(&global_send_idx[start], end - start, MPI_INT, proc,
+                tag, MPI_COMM_WORLD, &send_data.requests[i]);
+    }
+    for (int i = 0; i < recv_data.num_msgs; i++)
+    {
+        int proc = recv_data.procs[i];
+        int start = recv_data.indptr[i];
+        int end = recv_data.indptr[i+1];
+        MPI_Irecv(&global_recv_idx[start], end - start, MPI_INT, proc,
+                tag, MPI_COMM_WORLD, &recv_data.requests[i]);
+    }
+    if (send_data.num_msgs) MPI_Waitall(send_data.num_msgs, 
+            send_data.requests.data(), MPI_STATUSES_IGNORE);
+    if (recv_data.num_msgs) MPI_Waitall(recv_data.num_msgs, 
+            recv_data.requests.data(), MPI_STATUSES_IGNORE);
 
     // Initializing node-aware communication package
     NAPComm* nap_comm;
-    MPI_NAPinit(n_sends, send_procs.data(), send_ptr.data(), send_indices.data(), 
-            n_recvs, recv_procs.data(), recv_ptr.data(), recv_indices.data(), 
+    MPI_NAPinit(send_data.num_msgs, send_data.procs.data(), 
+            send_data.indptr.data(), global_send_idx.data(), 
+            recv_data.num_msgs, recv_data.procs.data(), 
+            recv_data.indptr.data(), global_recv_idx.data(),
             MPI_COMM_WORLD, &nap_comm);
+
+    // Test correctness of communication
+    std::vector<int> send_vals(local_size);
+    int val = local_size*rank;
+    for (int i = 0; i < local_size; i++)
+    {
+        send_vals[i] = val++;
+    }
+    std::vector<int> std_recv_vals(recv_data.size_msgs);
+    std::vector<int> nap_recv_vals(recv_data.size_msgs);
+
+    // 1. Standard Communication
+    standard_communication(send_vals, std_recv_vals, 49345, 
+            &send_data, &recv_data);
+
+    // TODO - Fixing this...
+    // 2. Node-Aware Communication
+    NAPData nap_data;
+    MPI_INAPsend(send_vals.data(), nap_comm, MPI_INT, 20423, MPI_COMM_WORLD, &nap_data);
+    //MPI_INAPrecv(nap_recv_vals.data(), nap_comm, MPI_INT, 20423, MPI_COMM_WORLD, &nap_data);
+    //MPI_NAPWait(nap_comm, &nap_data);
+
+    // 3. Compare std_recv_vals and nap_recv_vals
     
+
     MPI_Finalize();
 }

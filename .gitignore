@@ -30,3 +30,9 @@
 *.exe
 *.out
 *.app
+
+# Old tmp files
+*.swp
+
+
+test_nap_comm

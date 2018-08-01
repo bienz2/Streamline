@@ -57,6 +57,11 @@ struct topo_data{
         }
         MPI_Comm_split(mpi_comm, rank_node, rank, &local_comm);   
     }
+
+    ~topo_data()
+    {
+        MPI_Comm_free(&local_comm);
+    }
 };
 
 int get_node(const int proc, const topo_data* topo_info)

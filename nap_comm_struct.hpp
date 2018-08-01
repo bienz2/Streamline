@@ -4,6 +4,7 @@
 #include <mpi.h>
 #include <vector>
 #include <map>
+#include <algorithm>
 
 // Class Structs
 struct comm_data{
@@ -12,6 +13,22 @@ struct comm_data{
     int* procs;
     int* indptr;
     int* indices;
+
+    comm_data()
+    {
+        num_msgs = 0;
+	size_msgs = 0;
+	procs = NULL;
+	indptr = NULL;
+	indices = NULL;
+    }
+
+    ~comm_data()
+    {
+        delete[] procs;
+        delete[] indptr;
+        delete[] indices;
+    }
 };
 
 struct comm_pkg{
@@ -22,6 +39,12 @@ struct comm_pkg{
     {
         send_data = new comm_data();
         recv_data = new comm_data();
+    }
+
+    ~comm_pkg()
+    {
+        delete send_data;
+        delete recv_data;
     }
 };
 
@@ -39,6 +62,14 @@ struct NAPComm{
         local_S_comm = new comm_pkg();
         global_comm = new comm_pkg();
         topo_info = _topo_info;
+    }
+
+    ~NAPComm()
+    {
+        delete local_L_comm;
+        delete local_R_comm;
+        delete local_S_comm;
+        delete global_comm;
     }
 };
 
@@ -93,7 +124,7 @@ void MPI_NAPinit(const int n_sends, const int* send_procs, const int* send_indpt
     form_global_comm(nap_comm->local_S_comm->recv_data, nap_comm->global_comm->send_data,
             recv_idx_nodes, mpi_comm, topology_info, 93284);
             
-    // Find global recv nodes
+/*    // Find global recv nodes
     std::vector<int> recv_nodes;
     std::vector<int> recv_node_to_local;
     map_procs_to_nodes(nap_comm, n_recvs, recv_procs, recv_indptr,
@@ -115,15 +146,17 @@ void MPI_NAPinit(const int n_sends, const int* send_procs, const int* send_indpt
 
     // Update send and receive indices
     update_indices(nap_comm);
-
+*/
     // Copy to pointer for return
     *nap_comm_ptr = nap_comm;
 }
 
-void MPI_NAPdestroy(NAPComm** nap_comm_ptr)
+void MPI_NAPDestroy(NAPComm** nap_comm_ptr)
 {
     NAPComm* nap_comm = *nap_comm_ptr;
-    delete[] nap_comm;
+    topo_data* topo_info = nap_comm->topo_info;
+    delete topo_info;
+    delete nap_comm;
 }
 
 
@@ -228,20 +261,9 @@ void form_local_comm(const int orig_num_sends, const int* orig_send_procs,
     int proc;
     MPI_Status recv_status;
 
-    int num_sends = 0;
-    int size_sends = 0;
-    int* send_procs;
-    int* send_indptr;
-    int* send_indices;
     std::vector<int> send_buffer;
-    std::vector<int> send_requests;
+    std::vector<MPI_Request> send_requests;
     std::vector<int> send_sizes;
-
-    int num_recvs = 0;
-    int size_recvs = 0;
-    int* recv_procs;
-    int* recv_indptr;
-    int* recv_indices;
     std::vector<int> recv_buffer;
     
     std::vector<int> orig_to_node;
@@ -251,15 +273,26 @@ void form_local_comm(const int orig_num_sends, const int* orig_send_procs,
     orig_to_node.resize(orig_num_sends);
     local_idx.resize(local_num_procs);
     send_sizes.resize(local_num_procs, 0);
-    send_procs = new int[local_num_procs];
-    send_indptr = new int[local_num_procs + 1];
-    recv_procs = new int[local_num_procs];
-    recv_indptr = new int[local_num_procs + 1];
+
+    send_data->num_msgs = 0;
+    send_data->size_msgs = 0;
+    send_data->procs = new int[local_num_procs];
+    send_data->indptr = new int[local_num_procs + 1];
+    send_data->indices = NULL;
+    send_data->indptr[0] = 0;
+
+    recv_data->num_msgs = 0;
+    recv_data->size_msgs = 0;
+    recv_data->procs = new int[local_num_procs];
+    recv_data->indptr = new int[local_num_procs + 1];
+    recv_data->indices = NULL;
+    recv_data->indptr[0] = 0;
 
     local_data->num_msgs = 0;
     local_data->size_msgs = 0;
     local_data->procs = new int[local_num_procs];
     local_data->indptr = new int[local_num_procs];
+    local_data->indices = NULL;
     local_data->indptr[0] = 0;
 
     // Form local_S_comm
@@ -273,8 +306,8 @@ void form_local_comm(const int orig_num_sends, const int* orig_send_procs,
             local_proc = nodes_to_local[node];
             if (send_sizes[local_proc] == 0)
             {
-                local_idx[local_proc] = num_sends;
-                send_procs[num_sends++] = local_proc;
+                local_idx[local_proc] = send_data->num_msgs;
+                send_data->procs[send_data->num_msgs++] = local_proc;
             }
             orig_to_node[i] = node;
             send_sizes[local_proc] += size;
@@ -290,18 +323,17 @@ void form_local_comm(const int orig_num_sends, const int* orig_send_procs,
     }        
     local_data->indices = new int[local_data->size_msgs];
     
-    send_indptr[0] = 0;
-    for (int i = 0; i < num_sends; i++)
+    for (int i = 0; i < send_data->num_msgs; i++)
     {
-        local_proc = send_procs[i];
-        send_indptr[i+1] = send_indptr[i] + send_sizes[local_proc];
+        local_proc = send_data->procs[i];
+        send_data->indptr[i+1] = send_data->indptr[i] + send_sizes[local_proc];
         send_sizes[local_proc] = 0;
     }
-    size_sends = send_indptr[num_sends];
+    send_data->size_msgs = send_data->indptr[send_data->num_msgs];
     
     // Allocate send_indices and fill vector
-    send_indices = new int[size_sends];
-    std::vector<int> send_idx_node(size_sends);
+    send_data->indices = new int[send_data->size_msgs];
+    std::vector<int> send_idx_node(send_data->size_msgs);
     local_data->size_msgs = 0;
     for (int i = 0; i < orig_num_sends; i++)
     {
@@ -321,8 +353,8 @@ void form_local_comm(const int orig_num_sends, const int* orig_send_procs,
             proc_idx = local_idx[local_proc];
             for (int j = start; j < end; j++)
             {
-                idx = send_indptr[proc_idx] + send_sizes[local_proc]++;
-                send_indices[idx] = orig_send_indices[j];
+                idx = send_data->indptr[proc_idx] + send_sizes[local_proc]++;
+                send_data->indices[idx] = orig_send_indices[j];
                 send_idx_node[idx] = node;
             }
         }
@@ -331,22 +363,22 @@ void form_local_comm(const int orig_num_sends, const int* orig_send_procs,
     // Send 'local_S_comm send' info (to form local_S recv) 
     MPI_Allreduce(MPI_IN_PLACE, send_sizes.data(), local_num_procs, 
             MPI_INT, MPI_SUM, local_comm);
-    size_recvs = send_sizes[local_rank];
-    recv_indices = new int[size_recvs];
-    recv_idx_nodes.resize(size_recvs);
+    recv_data->size_msgs = send_sizes[local_rank];
+    recv_data->indices = new int[recv_data->size_msgs];
+    recv_idx_nodes.resize(recv_data->size_msgs);
 
-    send_buffer.resize(2*size_sends);
-    send_requests.resize(num_sends);
+    send_buffer.resize(2*send_data->size_msgs);
+    send_requests.resize(send_data->num_msgs);
     ctr = 0;
     start_ctr = 0;
-    for (int i = 0; i < num_sends; i++)
+    for (int i = 0; i < send_data->num_msgs; i++)
     {
-        proc = send_procs[i];
-        start = send_indptr[i];
-        end = send_indptr[i+1];
+        proc = send_data->procs[i];
+        start = send_data->indptr[i];
+        end = send_data->indptr[i+1];
         for (int j = start; j < end; j++)
         {
-            send_buffer[ctr++] = send_indices[j];
+            send_buffer[ctr++] = send_data->indices[j];
             send_buffer[ctr++] = send_idx_node[j];
         }
         MPI_Isend(&send_buffer[start_ctr], ctr - start_ctr , 
@@ -355,8 +387,7 @@ void form_local_comm(const int orig_num_sends, const int* orig_send_procs,
     }
 
     ctr = 0;
-    recv_indptr[0] = 0;
-    while (ctr < size_recvs)
+    while (ctr < recv_data->size_msgs)
     {
         MPI_Probe(MPI_ANY_SOURCE, tag, local_comm, &recv_status);
         proc = recv_status.MPI_SOURCE;
@@ -366,30 +397,18 @@ void form_local_comm(const int orig_num_sends, const int* orig_send_procs,
         MPI_Recv(recv_buffer.data(), size, MPI_INT, proc, tag, local_comm, &recv_status);
         for (int i = 0; i < size; i += 2)
         {
-            recv_indices[ctr] = recv_buffer[i];
+            recv_data->indices[ctr] = recv_buffer[i];
             recv_idx_nodes[ctr++] = recv_buffer[i+1];
         }
-        recv_procs[num_recvs] = proc;
-        recv_indptr[num_recvs+1] = recv_indptr[num_recvs] + (size / 2);
-        num_recvs++;
+        recv_data->procs[recv_data->num_msgs] = proc;
+        recv_data->indptr[recv_data->num_msgs + 1] = recv_data->indptr[recv_data->num_msgs] + (size / 2);
+        recv_data->num_msgs++;
     }
 
-    if (num_sends)
+    if (send_data->num_msgs)
     {
-        MPI_Waitall(num_sends, send_requests.data(), MPI_STATUSES_IGNORE);
+        MPI_Waitall(send_data->num_msgs, send_requests.data(), MPI_STATUSES_IGNORE);
     }
-
-    send_data->num_msgs = num_sends;
-    send_data->size_msgs = size_sends;
-    send_data->procs = send_procs;
-    send_data->indptr = send_indptr;
-    send_data->indices = send_indices;
-
-    recv_data->num_msgs = num_recvs;
-    recv_data->size_msgs = size_recvs;
-    recv_data->procs = recv_procs;
-    recv_data->indptr = recv_indptr;
-    recv_data->indices = recv_indices;
 }
 
 void form_global_comm(comm_data* local_data, comm_data* global_data, 
@@ -464,19 +483,26 @@ void form_global_comm(comm_data* local_data, comm_data* global_data,
         }
     }
 
+    // Sort indices
+    for (int i = 0; i < num_sends; i++)
+    {
+        start = send_indptr[i];
+        end = send_indptr[i+1];
+        std::sort(tmp_send_indices.begin() + start, tmp_send_indices.begin() + end);
+    }
+
     // Remove duplicates
-    start = send_indptr[0];
     ctr = 0;
+    start = send_indptr[0];
     for (int i = 0; i < num_sends; i++)
     {
         end = send_indptr[i+1];
-        std::sort(tmp_send_indices.begin() + start, tmp_send_indices.begin() + end);
         tmp_send_indices[ctr++] = tmp_send_indices[start];
-        for (int j = start+1; j < end; j++)
+        for (int j = start; j < end - 1; j++)
         {
-            if (tmp_send_indices[j] != tmp_send_indices[j+1])
+            if (tmp_send_indices[j+1] != tmp_send_indices[j])
             {
-                tmp_send_indices[ctr++] = tmp_send_indices[j];
+                tmp_send_indices[ctr++] = tmp_send_indices[j+1];
             }
         }
         start = end;
@@ -486,9 +512,9 @@ void form_global_comm(comm_data* local_data, comm_data* global_data,
     send_indices = new int[size_sends];
     for (int i = 0; i < size_sends; i++)
     {
-        send_indices[i] = tmp_send_indices[ctr];
+        send_indices[i] = tmp_send_indices[i];
     }
-     
+
     global_data->num_msgs = num_sends;
     global_data->size_msgs = size_sends;
     global_data->procs = send_procs;

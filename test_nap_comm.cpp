@@ -213,28 +213,29 @@ int main(int argc, char *argv[])
             MPI_COMM_WORLD, &nap_comm);
 
     // Test correctness of communication
-    std::vector<int> send_vals(local_size);
-    int val = local_size*rank;
-    for (int i = 0; i < local_size; i++)
-    {
-        send_vals[i] = val++;
-    }
-    std::vector<int> std_recv_vals(recv_data.size_msgs);
-    std::vector<int> nap_recv_vals(recv_data.size_msgs);
+    //std::vector<int> send_vals(local_size);
+    //int val = local_size*rank;
+    //for (int i = 0; i < local_size; i++)
+    //{
+    //    send_vals[i] = val++;
+    //}
+    //std::vector<int> std_recv_vals(recv_data.size_msgs);
+    //std::vector<int> nap_recv_vals(recv_data.size_msgs);
 
     // 1. Standard Communication
-    standard_communication(send_vals, std_recv_vals, 49345,
-            &send_data, &recv_data);
+    //standard_communication(send_vals, std_recv_vals, 49345,
+    //        &send_data, &recv_data);
 
     // TODO - Fixing this...
     // 2. Node-Aware Communication
-    NAPData nap_data;
-    MPI_INAPsend(send_vals.data(), nap_comm, MPI_INT, 20423, MPI_COMM_WORLD, &nap_data);
+    //NAPData nap_data;
+    //MPI_INAPsend(send_vals.data(), nap_comm, MPI_INT, 20423, MPI_COMM_WORLD, &nap_data);
     //MPI_INAPrecv(nap_recv_vals.data(), nap_comm, MPI_INT, 20423, MPI_COMM_WORLD, &nap_data);
     //MPI_NAPWait(nap_comm, &nap_data);
 
     // 3. Compare std_recv_vals and nap_recv_vals
 
 
+    MPI_NAPDestroy(&nap_comm);
     MPI_Finalize();
 }

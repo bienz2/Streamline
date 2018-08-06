@@ -21,7 +21,6 @@ struct NAPCommData{
 
     ~NAPCommData()
     {
-        delete[] buf;
         delete[] global_buffer;
         delete[] global_requests;
     }
@@ -85,12 +84,12 @@ void MPI_INAPsend(T* buf, NAPComm* nap_comm,
             - nap_comm->local_S_comm->recv_data->indptr[i];
         if (size <= 0) printf("Rank %d: Size of msg %d is %d\n", rank, i, size);
     }
-    //MPI_intra_comm(nap_comm->local_S_comm, buf, &local_S_recv_data,
-    //        local_S_tag, nap_comm->topo_info->local_comm, datatype, datatype);
+    MPI_intra_comm(nap_comm->local_S_comm, buf, &local_S_recv_data,
+            local_S_tag, nap_comm->topo_info->local_comm, datatype, datatype);
 
     // Initialize Isends for inter-node step (step 2 in nap comm)
-//    MPI_inter_send(nap_comm->global_comm, local_S_recv_data, tag,
-//            comm, datatype, &global_send_requests, &global_send_buffer);
+    MPI_inter_send(nap_comm->global_comm, local_S_recv_data, tag,
+            comm, datatype, &global_send_requests, &global_send_buffer);
 
     // Store global_send_requests and global_send_buffer, as to not free data
     // before sends are finished
@@ -119,16 +118,16 @@ void MPI_INAPrecv(T* buf, NAPComm* nap_comm,
 
     // Store global_recv_requests and global_recv_buffer, as to not free data
     // before recvs are finished
-    nap_recv_data->global_recv_requests = global_recv_requests;
-    nap_recv_data->global_recv_buffer = global_recv_buffer;
+    nap_recv_data->global_requests = global_recv_requests;
+    nap_recv_data->global_buffer = global_recv_buffer;
     nap_data->recv_data = nap_recv_data;
 }
 
 template <typename T, typename U>
 void MPI_NAPwait(NAPComm* nap_comm, NAPData* nap_data)
 {
-    NAPCommData<T>* nap_send_data = (NAPCommData<T>) nap_data->send_data;
-    NAPCommData<U>* nap_recv_data = (NAPCommData<U>) nap_data->recv_data;
+    NAPCommData<T>* nap_send_data = (NAPCommData<T>*) nap_data->send_data;
+    NAPCommData<U>* nap_recv_data = (NAPCommData<U>*) nap_data->recv_data;
 
     U* local_R_recv_data = NULL;
     U* local_L_recv_data = NULL;
@@ -138,8 +137,8 @@ void MPI_NAPwait(NAPComm* nap_comm, NAPData* nap_data)
     U* recv_buf = nap_recv_data->buf;
     MPI_Request* global_send_requests = nap_send_data->global_requests;
     MPI_Request* global_recv_requests = nap_recv_data->global_requests;
-    MPI_Datatype* send_type = nap_send_data->datatype;
-    MPI_Datatype* recv_type = nap_recv_data->datatype;
+    MPI_Datatype send_type = nap_send_data->datatype;
+    MPI_Datatype recv_type = nap_recv_data->datatype;
 
     int local_R_tag = nap_recv_data->tag + 2;
     int local_L_tag = nap_recv_data->tag + 3;
@@ -158,8 +157,8 @@ void MPI_NAPwait(NAPComm* nap_comm, NAPData* nap_data)
 
     // Map recv buffers from final intra node steps to correct locations in
     // recv_data
-    MPI_intra_recv_map(nap_comm->local_L_comm, local_L_recv_data, recv_buf);
-    MPI_intra_recv_map(nap_comm->local_R_comm, local_R_recv_data, recv_buf);
+//    MPI_intra_recv_map(nap_comm->local_L_comm, local_L_recv_data, recv_buf);
+//    MPI_intra_recv_map(nap_comm->local_R_comm, local_R_recv_data, recv_buf);
 
     nap_recv_data->buf = NULL;
 

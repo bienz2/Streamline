@@ -124,7 +124,7 @@ void MPI_NAPinit(const int n_sends, const int* send_procs, const int* send_indpt
     form_global_comm(nap_comm->local_S_comm->recv_data, nap_comm->global_comm->send_data,
             recv_idx_nodes, mpi_comm, topology_info, 93284);
             
-/*    // Find global recv nodes
+    // Find global recv nodes
     std::vector<int> recv_nodes;
     std::vector<int> recv_node_to_local;
     map_procs_to_nodes(nap_comm, n_recvs, recv_procs, recv_indptr,
@@ -146,7 +146,7 @@ void MPI_NAPinit(const int n_sends, const int* send_procs, const int* send_indpt
 
     // Update send and receive indices
     update_indices(nap_comm);
-*/
+
     // Copy to pointer for return
     *nap_comm_ptr = nap_comm;
 }

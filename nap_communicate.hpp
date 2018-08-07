@@ -76,14 +76,6 @@ void MPI_INAPsend(T* buf, NAPComm* nap_comm,
     MPI_Request* global_send_requests = NULL;
 
     // Initial intra-node redistribution (step 1 in nap comm)
-    int rank;
-    MPI_Comm_rank(MPI_COMM_WORLD, &rank);
-    for (int i = 0; i < nap_comm->local_S_comm->send_data->num_msgs; i++)   
-    {
-        int size = nap_comm->local_S_comm->send_data->indptr[i+1] 
-            - nap_comm->local_S_comm->recv_data->indptr[i];
-        if (size <= 0) printf("Rank %d: Size of msg %d is %d\n", rank, i, size);
-    }
     MPI_intra_comm(nap_comm->local_S_comm, buf, &local_S_recv_data,
             local_S_tag, nap_comm->topo_info->local_comm, datatype, datatype);
 
@@ -143,6 +135,7 @@ void MPI_NAPwait(NAPComm* nap_comm, NAPData* nap_data)
     int local_R_tag = nap_recv_data->tag + 2;
     int local_L_tag = nap_recv_data->tag + 3;
 
+    MPI_Barrier(MPI_COMM_WORLD);
     MPI_inter_waitall(nap_comm->global_comm, global_send_requests,
             global_recv_requests);
 
@@ -157,8 +150,8 @@ void MPI_NAPwait(NAPComm* nap_comm, NAPData* nap_data)
 
     // Map recv buffers from final intra node steps to correct locations in
     // recv_data
-//    MPI_intra_recv_map(nap_comm->local_L_comm, local_L_recv_data, recv_buf);
-//    MPI_intra_recv_map(nap_comm->local_R_comm, local_R_recv_data, recv_buf);
+    MPI_intra_recv_map(nap_comm->local_L_comm, local_L_recv_data, recv_buf);
+    MPI_intra_recv_map(nap_comm->local_R_comm, local_R_recv_data, recv_buf);
 
     nap_recv_data->buf = NULL;
 
@@ -205,7 +198,7 @@ void MPI_intra_comm(comm_pkg* comm, T* send_data, T** recv_data,
     {
         proc = comm->recv_data->procs[i];
         start = comm->recv_data->indptr[i];
-        end = comm->send_data->indptr[i+1];
+        end = comm->recv_data->indptr[i+1];
         MPI_Irecv(&recv_buffer[start], end - start, recv_type, proc, tag, 
                 local_comm, &recv_requests[i]);
     }
@@ -231,6 +224,9 @@ void MPI_inter_send(comm_pkg* comm, T* send_data,
         int tag, MPI_Comm mpi_comm, MPI_Datatype mpi_type,
         MPI_Request** send_request_ptr, T** send_buffer_ptr)
 {
+    int rank;
+    MPI_Comm_rank(mpi_comm, &rank);
+
     MPI_Request* send_requests;
     T* send_buffer;
     int idx, proc, start, end;
@@ -261,6 +257,9 @@ void MPI_inter_recv(comm_pkg* comm,
         int tag, MPI_Comm mpi_comm, MPI_Datatype mpi_type,
         MPI_Request** recv_request_ptr, T** recv_buffer_ptr)
 {
+    int rank;
+    MPI_Comm_rank(mpi_comm, &rank);
+
     MPI_Request* recv_requests;
     T* recv_buffer;
     int proc, start, end;
@@ -273,7 +272,7 @@ void MPI_inter_recv(comm_pkg* comm,
         proc = comm->recv_data->procs[i];
         start = comm->recv_data->indptr[i];
         end = comm->recv_data->indptr[i+1];
-        MPI_Isend(&recv_buffer[start], end - start, mpi_type, proc, tag, 
+        MPI_Irecv(&recv_buffer[start], end - start, mpi_type, proc, tag, 
                 mpi_comm, &recv_requests[i]);
     }
 

@@ -135,7 +135,6 @@ void MPI_NAPwait(NAPComm* nap_comm, NAPData* nap_data)
     int local_R_tag = nap_recv_data->tag + 2;
     int local_L_tag = nap_recv_data->tag + 3;
 
-    MPI_Barrier(MPI_COMM_WORLD);
     MPI_inter_waitall(nap_comm->global_comm, global_send_requests,
             global_recv_requests);
 
@@ -154,6 +153,9 @@ void MPI_NAPwait(NAPComm* nap_comm, NAPData* nap_data)
     MPI_intra_recv_map(nap_comm->local_R_comm, local_R_recv_data, recv_buf);
 
     nap_recv_data->buf = NULL;
+
+    delete[] local_R_recv_data;
+    delete[] local_L_recv_data;
 
     delete nap_send_data;
     delete nap_recv_data;
@@ -177,7 +179,7 @@ void MPI_intra_comm(comm_pkg* comm, T* send_data, T** recv_data,
     int idx, proc, start, end;
 
     send_requests = new MPI_Request[comm->send_data->num_msgs];
-    recv_requests = new MPI_Request[comm->send_data->num_msgs];
+    recv_requests = new MPI_Request[comm->recv_data->num_msgs];
     send_buffer = new T[comm->send_data->size_msgs];
     recv_buffer = new T[comm->recv_data->size_msgs];
 
@@ -201,7 +203,7 @@ void MPI_intra_comm(comm_pkg* comm, T* send_data, T** recv_data,
         end = comm->recv_data->indptr[i+1];
         MPI_Irecv(&recv_buffer[start], end - start, recv_type, proc, tag, 
                 local_comm, &recv_requests[i]);
-    }
+  }
 
     if (comm->send_data->num_msgs)
     {

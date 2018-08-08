@@ -100,11 +100,10 @@ void form_initial_communicator(int local_size, MPI_Data* send_data, MPI_Data* re
         }
     }
     send_data->num_msgs = send_data->procs.size();
-    send_data->requests.resize(send_data->num_msgs);
     send_data->indptr.resize(send_data->num_msgs + 1);
     send_data->requests.resize(send_data->num_msgs);
 
-    ctr = first_idx;
+    ctr = 0;
     send_data->indptr[0] = 0;
     for (int i = 0; i < send_data->num_msgs; i++)
     {
@@ -112,7 +111,7 @@ void form_initial_communicator(int local_size, MPI_Data* send_data, MPI_Data* re
         for (int j = 0; j < size; j++)
         {
             send_data->indices.push_back(ctr++);
-            if (ctr > last_idx) ctr = first_idx;
+            if (ctr >= local_size) ctr = 0;
         }
         send_data->indptr[i+1] = send_data->indices.size();
     }
@@ -207,10 +206,10 @@ int main(int argc, char *argv[])
     // Initializing node-aware communication package
     NAPComm* nap_comm;
     MPI_NAPinit(send_data.num_msgs, send_data.procs.data(), 
-            send_data.indptr.data(), global_send_idx.data(), 
+            send_data.indptr.data(), send_data.indices.data(), 
             recv_data.num_msgs, recv_data.procs.data(), 
-            recv_data.indptr.data(), global_recv_idx.data(),
-            MPI_COMM_WORLD, &nap_comm);
+            recv_data.indptr.data(), global_send_idx.data(),
+            global_recv_idx.data(), MPI_COMM_WORLD, &nap_comm);
 
     // Test correctness of communication
     std::vector<int> send_vals(local_size);
@@ -223,8 +222,8 @@ int main(int argc, char *argv[])
     std::vector<int> nap_recv_vals(recv_data.size_msgs);
 
     // 1. Standard Communication
-    //standard_communication(send_vals, std_recv_vals, 49345, 
-    //        &send_data, &recv_data);
+    standard_communication(send_vals, std_recv_vals, 49345, 
+            &send_data, &recv_data);
 
     // TODO - Fixing this...
     // 2. Node-Aware Communication
@@ -234,7 +233,18 @@ int main(int argc, char *argv[])
     MPI_NAPwait<int, int>(nap_comm, &nap_data);
 
     // 3. Compare std_recv_vals and nap_recv_vals
+    for (int i = 0; i < recv_data.size_msgs; i++)
+    {
+//        if (rank == 0)
+        {
+            if (std_recv_vals[i] != nap_recv_vals[i])
+            {
+                printf("Std[%d] = %d, NAP[%d] = %d\n", i, std_recv_vals[i], i, nap_recv_vals[i]);
+            }
+        }
+    }
     
+    MPI_NAPDestroy(&nap_comm);
 
     MPI_Finalize();
 }

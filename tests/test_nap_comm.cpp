@@ -1,14 +1,20 @@
-// Copyright (c) 2015-2017, Node-Aware MPI Development Team
-// License: Simplified BSD, http://opensource.org/licenses/BSD-2-Clause
+// EXPECT_EQ and ASSERT_EQ are macros
+// EXPECT_EQ test execution and continues even if there is a failure
+// ASSERT_EQ test execution and aborts if there is a failure
+// The ASSERT_* variants abort the program execution if an assertion fails
+// while EXPECT_* variants continue with the run.
 
+
+#include "gtest/gtest.h"
+#include "src/nap_comm.hpp"
 #include <mpi.h>
 #include <math.h>
 #include <stdlib.h>
 #include <iostream>
 #include <assert.h>
-#include "nap_comm.hpp"
 #include <vector>
 #include <set>
+
 
 struct MPI_Data
 {
@@ -156,15 +162,24 @@ void form_initial_communicator(int local_size, MPI_Data* send_data, MPI_Data* re
 }
 
 
-int main(int argc, char *argv[])
+int main(int argc, char** argv)
 {
-    // Initialize MPI
     MPI_Init(&argc, &argv);
+    ::testing::InitGoogleTest(&argc, argv);
+    int temp=RUN_ALL_TESTS();
+    MPI_Finalize();
+    return temp;
+} // end of main() //
 
+
+TEST(RandomCommTest, TestsInTests)
+{
     // Get MPI Information
     int rank, num_procs;
     MPI_Comm_rank(MPI_COMM_WORLD, &rank);
     MPI_Comm_size(MPI_COMM_WORLD, &num_procs);
+
+    setenv("PPN", "4", 1);
 
     // Initial communication info (standard)
     int local_size = 10000; // Number of variables each rank stores
@@ -222,10 +237,8 @@ int main(int argc, char *argv[])
     std::vector<int> nap_recv_vals(recv_data.size_msgs);
 
     // 1. Standard Communication
-    standard_communication(send_vals, std_recv_vals, 49345, 
-            &send_data, &recv_data);
+    standard_communication(send_vals, std_recv_vals, 49345, &send_data, &recv_data);
 
-    // TODO - Fixing this...
     // 2. Node-Aware Communication
     NAPData nap_data;
     MPI_INAPsend(send_vals.data(), nap_comm, MPI_INT, 20423, MPI_COMM_WORLD, &nap_data);
@@ -235,13 +248,11 @@ int main(int argc, char *argv[])
     // 3. Compare std_recv_vals and nap_recv_vals
     for (int i = 0; i < recv_data.size_msgs; i++)
     {
-        if (std_recv_vals[i] != nap_recv_vals[i])
-        {
-            printf("Std[%d] = %d, NAP[%d] = %d\n", i, std_recv_vals[i], i, nap_recv_vals[i]);
-        }
+        ASSERT_EQ(std_recv_vals[i], nap_recv_vals[i]);
     }
     
     MPI_NAPDestroy(&nap_comm);
 
-    MPI_Finalize();
+    setenv("PPN", "16", 1);
 }
+

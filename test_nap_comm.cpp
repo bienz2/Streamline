@@ -235,12 +235,9 @@ int main(int argc, char *argv[])
     // 3. Compare std_recv_vals and nap_recv_vals
     for (int i = 0; i < recv_data.size_msgs; i++)
     {
-//        if (rank == 0)
+        if (std_recv_vals[i] != nap_recv_vals[i])
         {
-            if (std_recv_vals[i] != nap_recv_vals[i])
-            {
-                printf("Std[%d] = %d, NAP[%d] = %d\n", i, std_recv_vals[i], i, nap_recv_vals[i]);
-            }
+            printf("Std[%d] = %d, NAP[%d] = %d\n", i, std_recv_vals[i], i, nap_recv_vals[i]);
         }
     }
     

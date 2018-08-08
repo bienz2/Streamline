@@ -3,6 +3,7 @@ project(node_aware_mpi)
 list(APPEND CMAKE_MODULE_PATH ${CMAKE_SOURCE_DIR}/cmake)
 
 enable_language(CXX)
+set(CMAKE_CXX_STANDARD 11)
 set(CMAKE_BUILD_TYPE Release)
 
 option(CRAY "Running on Cray Machine" OFF)

@@ -7,7 +7,13 @@
 #include <algorithm>
 #include <numeric>
 
-// Class Structs
+/******************************************
+ ****
+ **** Class Structs 
+ ****
+ ******************************************/
+
+// Data required for a single step of sends or recvs
 struct comm_data{
     int num_msgs;
     int size_msgs;
@@ -68,6 +74,7 @@ struct comm_data{
     }
 };
 
+// Data required for a single communication step
 struct comm_pkg{
     comm_data* send_data;
     comm_data* recv_data;
@@ -85,15 +92,22 @@ struct comm_pkg{
     }
 };
 
+// Data required for an instance of node-aware communication 
 struct NAPComm{
     comm_pkg* local_L_comm;
     comm_pkg* local_R_comm;
     comm_pkg* local_S_comm;
     comm_pkg* global_comm;
+    int buffer_size; // used for buffer
+    MPI_Request* send_requests;
+    MPI_Request* recv_requests;
     topo_data* topo_info;
 
     NAPComm(topo_data* _topo_info)
     {
+        buffer_size = 0;
+        send_requests = NULL;
+        recv_requests = NULL;
         local_L_comm = new comm_pkg();
         local_R_comm = new comm_pkg();
         local_S_comm = new comm_pkg();
@@ -107,10 +121,51 @@ struct NAPComm{
         delete local_R_comm;
         delete local_S_comm;
         delete global_comm;
+
+        delete[] send_requests;
+        delete[] recv_requests;
+    }
+
+    void finalize()
+    {
+        int tmp, max_n;
+
+        // Find max size sent (for send_buffer)
+        buffer_size = local_L_comm->send_data->size_msgs;
+        tmp = local_S_comm->send_data->size_msgs;
+        if (tmp > buffer_size) buffer_size = tmp;
+        tmp = local_R_comm->send_data->size_msgs;
+        if (tmp > buffer_size) buffer_size = tmp;
+        tmp = global_comm->send_data->size_msgs;
+        if (tmp > buffer_size) buffer_size = tmp;
+
+        // Find max number sent and recd
+        max_n = local_L_comm->send_data->num_msgs;
+        tmp = local_S_comm->send_data->num_msgs;
+        if (tmp > max_n) max_n = tmp;
+        tmp = local_R_comm->send_data->num_msgs;
+        if (tmp > max_n) max_n = tmp;
+        tmp = global_comm->send_data->num_msgs;
+        if (tmp > max_n) max_n = tmp;
+        send_requests = new MPI_Request[max_n];
+
+        // Find max number sent and recd
+        max_n = local_L_comm->recv_data->num_msgs;
+        tmp = local_S_comm->recv_data->num_msgs;
+        if (tmp > max_n) max_n = tmp;
+        tmp = local_R_comm->recv_data->num_msgs;
+        if (tmp > max_n) max_n = tmp;
+        tmp = global_comm->recv_data->num_msgs;
+        if (tmp > max_n) max_n = tmp;
+        recv_requests = new MPI_Request[max_n];
     }
 };
 
-// forward declarations
+/******************************************
+ ****
+ **** Forward Declarations 
+ ****
+ ******************************************/
 void map_procs_to_nodes(NAPComm* nap_comm, const int orig_num_msgs, 
     const int* orig_procs, const int* orig_indptr,
     std::vector<int>& msg_nodes, std::vector<int>& msg_node_to_local, 
@@ -128,7 +183,14 @@ void update_global_comm(NAPComm* nap_comm, topo_data* topo_info, MPI_Comm mpi_co
 void update_indices(NAPComm* nap_comm, std::map<int, int>& send_global_to_local,
         std::map<int, int>& recv_global_to_local);
 
-// Main Methods (initialize and destroy communicator)
+/******************************************
+ ****
+ **** Main Methods
+ ****
+ ******************************************/
+
+// Initialize NAPComm* structure, to be used for any number of 
+// instances of communication
 void MPI_NAPinit(const int n_sends, const int* send_procs, const int* send_indptr, 
         const int* send_indices, const int n_recvs, const int* recv_procs, 
         const int* recv_indptr, const int* global_send_indices, 
@@ -194,10 +256,14 @@ void MPI_NAPinit(const int n_sends, const int* send_procs, const int* send_indpt
         recv_global_to_local[global_recv_indices[i]] = i;
     update_indices(nap_comm, send_global_to_local, recv_global_to_local);
 
+    // Initialize final variable (MPI_Request arrays, etc.)
+    nap_comm->finalize();
+
     // Copy to pointer for return
     *nap_comm_ptr = nap_comm;
 }
 
+// Destroy NAPComm* structure
 void MPI_NAPDestroy(NAPComm** nap_comm_ptr)
 {
     NAPComm* nap_comm = *nap_comm_ptr;
@@ -212,6 +278,9 @@ void MPI_NAPDestroy(NAPComm** nap_comm_ptr)
  **** Helper Methods 
  ****
  ******************************************/
+
+// Map original communication processes to nodes on which they lie
+// And assign local processes to each node
 void map_procs_to_nodes(NAPComm* nap_comm, const int orig_num_msgs, 
         const int* orig_procs, const int* orig_indptr,
         std::vector<int>& msg_nodes, std::vector<int>& msg_node_to_local, 
@@ -284,9 +353,9 @@ void map_procs_to_nodes(NAPComm* nap_comm, const int orig_num_msgs,
     }
 }
 
-// TODO -- remove duplicates before sending
-// (initial send data may send same values to multiple processes on same node, 
-// or at least same local proc)
+// Form step of local communication (either initial local_S communicator
+// or final local_L communicator) along with the corresponding portion
+// of the fully local (local_L) communicator.
 void form_local_comm(const int orig_num_sends, const int* orig_send_procs, 
         const int* orig_send_ptr, const int* orig_send_indices, 
         const std::vector<int>& nodes_to_local, comm_data* send_data, 
@@ -444,6 +513,9 @@ void form_local_comm(const int orig_num_sends, const int* orig_send_procs,
     }
 }
 
+// Form portion of inter-node communication (data corresponding to
+// either global send or global recv), with node id currently in 
+// place of process with which to communicate
 void form_global_comm(comm_data* local_data, comm_data* global_data, 
         std::vector<int>& local_data_nodes, MPI_Comm mpi_comm, 
         topo_data* topo_info, int tag)
@@ -512,6 +584,7 @@ void form_global_comm(comm_data* local_data, comm_data* global_data,
     }
 }
 
+// Replace send and receive processes with the node id's currently in their place
 void update_global_comm(NAPComm* nap_comm, topo_data* topo_info, MPI_Comm mpi_comm)
 {
     int rank, num_procs;
@@ -643,12 +716,19 @@ void update_indices(NAPComm* nap_comm, std::map<int, int>& send_global_to_local,
     nap_comm->local_R_comm->send_data->remove_duplicates();
     nap_comm->local_R_comm->recv_data->remove_duplicates();
 
+    // Map global indices to usable indices
     map_indices(nap_comm->global_comm->send_data, nap_comm->local_S_comm->recv_data);
     map_indices(nap_comm->local_R_comm->send_data, nap_comm->global_comm->recv_data);
     map_indices(nap_comm->local_S_comm->send_data, send_global_to_local);
     map_indices(nap_comm->local_L_comm->send_data, send_global_to_local);
     map_indices(nap_comm->local_R_comm->recv_data, recv_global_to_local);
     map_indices(nap_comm->local_L_comm->recv_data, recv_global_to_local);
+
+    // Don't need local_S or global recv indices (just contiguous)
+    delete[] nap_comm->local_S_comm->recv_data->indices;
+    delete[] nap_comm->global_comm->recv_data->indices;
+    nap_comm->local_S_comm->recv_data->indices = NULL;
+    nap_comm->global_comm->recv_data->indices = NULL;
 }
 
 #endif

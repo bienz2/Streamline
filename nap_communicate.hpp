@@ -4,11 +4,15 @@
 #include <mpi.h>
 #include "nap_comm_struct.hpp"
 
+/******************************************
+ ****
+ **** Communication Structs
+ ****
+ ******************************************/
 template <typename T>
 struct NAPCommData{
     T* buf;
     T* global_buffer;
-    MPI_Request* global_requests;
     MPI_Datatype datatype;
     int tag;
 
@@ -16,13 +20,11 @@ struct NAPCommData{
     {
         buf = NULL;
         global_buffer = NULL;
-        global_requests = NULL;
     }
 
     ~NAPCommData()
     {
         delete[] global_buffer;
-        delete[] global_requests;
     }
 };
 
@@ -38,19 +40,24 @@ struct NAPData{
     }
 };
 
-// Forward Declarations
+/******************************************
+ ****
+ **** Forward Declarations
+ ****
+ ******************************************/
 template <typename T>
 void MPI_intra_comm(comm_pkg* comm, T* send_data, T** recv_data,
         int tag, MPI_Comm local_comm, MPI_Datatype send_type, 
-        MPI_Datatype recv_type);
+        MPI_Datatype recv_type, MPI_Request* send_requests, 
+        MPI_Request* recv_requests);
 template <typename T>
 void MPI_inter_send(comm_pkg* comm, T* send_data,
         int tag, MPI_Comm mpi_comm, MPI_Datatype datatype,
-        MPI_Request** send_request_ptr, T** send_buffer_ptr);
+        MPI_Request* send_request, T** send_buffer_ptr);
 template <typename T>
 void MPI_inter_recv(comm_pkg* comm,
         int tag, MPI_Comm mpi_comm, MPI_Datatype datatype,
-        MPI_Request** recv_request_ptr, T** recv_buffer_ptr);
+        MPI_Request* recv_request, T** recv_buffer_ptr);
 void MPI_inter_waitall(comm_pkg* comm, MPI_Request* send_requests, 
         MPI_Request* recv_requests);
 template <typename T>
@@ -58,7 +65,13 @@ void MPI_intra_recv_map(comm_pkg* comm, T* intra_recv_data,
         T* inter_recv_data);
 
 
-// Main Methods
+/******************************************
+ ****
+ **** Main Methods
+ ****
+ ******************************************/
+
+// Node-Aware Version of Isend
 template <typename T>
 void MPI_INAPsend(T* buf, NAPComm* nap_comm,
         MPI_Datatype datatype, int tag,
@@ -73,25 +86,27 @@ void MPI_INAPsend(T* buf, NAPComm* nap_comm,
     T* local_L_recv_data = NULL;
     T* local_S_recv_data = NULL;
     T* global_send_buffer = NULL;
-    MPI_Request* global_send_requests = NULL;
+    MPI_Request* send_requests = nap_comm->send_requests;
+    MPI_Request* recv_requests = nap_comm->recv_requests;
 
     // Initial intra-node redistribution (step 1 in nap comm)
     MPI_intra_comm(nap_comm->local_S_comm, buf, &local_S_recv_data,
-            local_S_tag, nap_comm->topo_info->local_comm, datatype, datatype);
+            local_S_tag, nap_comm->topo_info->local_comm, datatype, datatype,
+            send_requests, recv_requests);
 
     // Initialize Isends for inter-node step (step 2 in nap comm)
     MPI_inter_send(nap_comm->global_comm, local_S_recv_data, tag,
-            comm, datatype, &global_send_requests, &global_send_buffer);
+            comm, datatype, send_requests, &global_send_buffer);
 
     // Store global_send_requests and global_send_buffer, as to not free data
     // before sends are finished
-    nap_send_data->global_requests = global_send_requests;
     nap_send_data->global_buffer = global_send_buffer;
     nap_data->send_data = nap_send_data;
 
     delete[] local_S_recv_data;
 }
 
+// Node-Aware Version of Irecv
 template <typename T>
 void MPI_INAPrecv(T* buf, NAPComm* nap_comm, 
         MPI_Datatype datatype, int tag, 
@@ -103,18 +118,19 @@ void MPI_INAPrecv(T* buf, NAPComm* nap_comm,
     nap_recv_data->tag = tag;
     MPI_Request* global_recv_requests = NULL;
     T* global_recv_buffer = NULL;
+    MPI_Request* recv_requests = nap_comm->recv_requests;
  
     // Initialize Irecvs for inter-node step (step 2 in nap comm)
     MPI_inter_recv(nap_comm->global_comm, tag, comm, datatype,
-            &global_recv_requests, &global_recv_buffer);
+            recv_requests, &global_recv_buffer);
 
     // Store global_recv_requests and global_recv_buffer, as to not free data
     // before recvs are finished
-    nap_recv_data->global_requests = global_recv_requests;
     nap_recv_data->global_buffer = global_recv_buffer;
     nap_data->recv_data = nap_recv_data;
 }
 
+// Wait for Node-Aware Isends and Irecvs to complete
 template <typename T, typename U>
 void MPI_NAPwait(NAPComm* nap_comm, NAPData* nap_data)
 {
@@ -127,25 +143,25 @@ void MPI_NAPwait(NAPComm* nap_comm, NAPData* nap_data)
     U* global_recv_buffer = nap_recv_data->global_buffer;
     T* send_buf = nap_send_data->buf;
     U* recv_buf = nap_recv_data->buf;
-    MPI_Request* global_send_requests = nap_send_data->global_requests;
-    MPI_Request* global_recv_requests = nap_recv_data->global_requests;
+    MPI_Request* send_requests = nap_comm->send_requests;
+    MPI_Request* recv_requests = nap_comm->recv_requests;
     MPI_Datatype send_type = nap_send_data->datatype;
     MPI_Datatype recv_type = nap_recv_data->datatype;
 
     int local_R_tag = nap_recv_data->tag + 2;
     int local_L_tag = nap_recv_data->tag + 3;
 
-    MPI_inter_waitall(nap_comm->global_comm, global_send_requests,
-            global_recv_requests);
+    MPI_inter_waitall(nap_comm->global_comm, send_requests, recv_requests);
 
     // Final intra-node redistribution (step 3 in nap comm)
     MPI_intra_comm(nap_comm->local_R_comm, global_recv_buffer, &local_R_recv_data,
-            local_R_tag, nap_comm->topo_info->local_comm, recv_type, recv_type);
+            local_R_tag, nap_comm->topo_info->local_comm, recv_type, recv_type,
+            send_requests, recv_requests);
 
     // Fully intra-node communication
     MPI_intra_comm(nap_comm->local_L_comm, send_buf, &local_L_recv_data,
-            local_L_tag, nap_comm->topo_info->local_comm, send_type, recv_type);
-
+            local_L_tag, nap_comm->topo_info->local_comm, send_type, recv_type,
+            send_requests, recv_requests);
 
     // Map recv buffers from final intra node steps to correct locations in
     // recv_data
@@ -162,24 +178,24 @@ void MPI_NAPwait(NAPComm* nap_comm, NAPData* nap_data)
 }
 
 
+/******************************************
+ ****
+ **** Helper Methods
+ ****
+ ******************************************/
 
-
-// Helper Methods
+// Intra-Node Communication
 template <typename T>
 void MPI_intra_comm(comm_pkg* comm, T* send_data, T** recv_data,
-        int tag, MPI_Comm local_comm, MPI_Datatype send_type,
-        MPI_Datatype recv_type)
+        int tag, MPI_Comm local_comm, MPI_Datatype send_type, MPI_Datatype recv_type, 
+        MPI_Request* send_requests, MPI_Request* recv_requests)
 {
     if (comm->send_data->num_msgs + comm->recv_data->num_msgs == 0) return;
 
-    MPI_Request* send_requests;
-    MPI_Request* recv_requests;
     T* send_buffer;
     T* recv_buffer;
     int idx, proc, start, end;
 
-    send_requests = new MPI_Request[comm->send_data->num_msgs];
-    recv_requests = new MPI_Request[comm->recv_data->num_msgs];
     send_buffer = new T[comm->send_data->size_msgs];
     recv_buffer = new T[comm->recv_data->size_msgs];
 
@@ -216,25 +232,20 @@ void MPI_intra_comm(comm_pkg* comm, T* send_data, T** recv_data,
     }
 
     *recv_data = recv_buffer;
-    delete[] send_requests;
-    delete[] recv_requests;
     delete[] send_buffer;
 }
 
+// Inter-node Isend
 template <typename T>
 void MPI_inter_send(comm_pkg* comm, T* send_data,
         int tag, MPI_Comm mpi_comm, MPI_Datatype mpi_type,
-        MPI_Request** send_request_ptr, T** send_buffer_ptr)
+        MPI_Request* send_requests, T** send_buffer_ptr)
 {
     int rank;
     MPI_Comm_rank(mpi_comm, &rank);
 
-    MPI_Request* send_requests;
-    T* send_buffer;
     int idx, proc, start, end;
-
-    send_requests = new MPI_Request[comm->send_data->num_msgs];
-    send_buffer = new T[comm->send_data->size_msgs];
+    T* send_buffer = new T[comm->send_data->size_msgs];
 
     for (int i = 0; i < comm->send_data->num_msgs; i++)
     {
@@ -251,23 +262,19 @@ void MPI_inter_send(comm_pkg* comm, T* send_data,
     }
 
     *send_buffer_ptr = send_buffer;
-    *send_request_ptr = send_requests;
 }
 
+// Inter-Node Irecvs
 template <typename T>
 void MPI_inter_recv(comm_pkg* comm,
         int tag, MPI_Comm mpi_comm, MPI_Datatype mpi_type,
-        MPI_Request** recv_request_ptr, T** recv_buffer_ptr)
+        MPI_Request* recv_requests, T** recv_buffer_ptr)
 {
     int rank;
     MPI_Comm_rank(mpi_comm, &rank);
 
-    MPI_Request* recv_requests;
-    T* recv_buffer;
     int proc, start, end;
-
-    recv_requests = new MPI_Request[comm->recv_data->num_msgs];
-    recv_buffer = new T[comm->recv_data->size_msgs];
+    T* recv_buffer = new T[comm->recv_data->size_msgs];
 
     for (int i = 0; i < comm->recv_data->num_msgs; i++)
     {
@@ -279,9 +286,9 @@ void MPI_inter_recv(comm_pkg* comm,
     }
 
     *recv_buffer_ptr = recv_buffer;
-    *recv_request_ptr = recv_requests;
 }
 
+// Inter-Node Waitall
 void MPI_inter_waitall(comm_pkg* comm, MPI_Request* send_requests, 
         MPI_Request* recv_requests)
 {
@@ -296,6 +303,7 @@ void MPI_inter_waitall(comm_pkg* comm, MPI_Request* send_requests,
     }
 }
 
+// Map received values to the appropriate locations
 template <typename T>
 void MPI_intra_recv_map(comm_pkg* comm, T* intra_recv_data, T* inter_recv_data)
 {

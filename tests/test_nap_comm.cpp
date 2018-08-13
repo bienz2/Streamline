@@ -16,7 +16,7 @@
 #include <set>
 
 
-struct MPI_Data
+struct MPIX_Data
 {
     int num_msgs;
     int size_msgs; 
@@ -29,7 +29,7 @@ struct MPI_Data
 
 void standard_communication(std::vector<int>& send_vals, 
         std::vector<int>& recv_vals, int tag,
-        MPI_Data* send_data, MPI_Data* recv_data)
+        MPIX_Data* send_data, MPIX_Data* recv_data)
 {
     int proc, start, end, idx;
 
@@ -69,7 +69,7 @@ void standard_communication(std::vector<int>& send_vals,
 } 
 
 // Form random communication
-void form_initial_communicator(int local_size, MPI_Data* send_data, MPI_Data* recv_data)
+void form_initial_communicator(int local_size, MPIX_Data* send_data, MPIX_Data* recv_data)
 {
     // Get MPI Information
     int rank, num_procs;
@@ -183,8 +183,8 @@ TEST(RandomCommTest, TestsInTests)
 
     // Initial communication info (standard)
     int local_size = 10000; // Number of variables each rank stores
-    MPI_Data send_data;
-    MPI_Data recv_data;
+    MPIX_Data send_data;
+    MPIX_Data recv_data;
     form_initial_communicator(local_size, &send_data, &recv_data);
 
     // Determine unique global indices (map from send indices to recv indicies)
@@ -220,7 +220,7 @@ TEST(RandomCommTest, TestsInTests)
 
     // Initializing node-aware communication package
     NAPComm* nap_comm;
-    MPI_NAPinit(send_data.num_msgs, send_data.procs.data(), 
+    MPIX_NAPinit(send_data.num_msgs, send_data.procs.data(), 
             send_data.indptr.data(), send_data.indices.data(), 
             recv_data.num_msgs, recv_data.procs.data(), 
             recv_data.indptr.data(), global_send_idx.data(),
@@ -241,9 +241,9 @@ TEST(RandomCommTest, TestsInTests)
 
     // 2. Node-Aware Communication
     NAPData nap_data;
-    MPI_INAPsend(send_vals.data(), nap_comm, MPI_INT, 20423, MPI_COMM_WORLD, &nap_data);
-    MPI_INAPrecv(nap_recv_vals.data(), nap_comm, MPI_INT, 20423, MPI_COMM_WORLD, &nap_data);
-    MPI_NAPwait<int, int>(nap_comm, &nap_data);
+    MPIX_INAPsend(send_vals.data(), nap_comm, MPI_INT, 20423, MPI_COMM_WORLD, &nap_data);
+    MPIX_INAPrecv(nap_recv_vals.data(), nap_comm, MPI_INT, 20423, MPI_COMM_WORLD, &nap_data);
+    MPIX_NAPwait<int, int>(nap_comm, &nap_data);
 
     // 3. Compare std_recv_vals and nap_recv_vals
     for (int i = 0; i < recv_data.size_msgs; i++)
@@ -251,7 +251,7 @@ TEST(RandomCommTest, TestsInTests)
         ASSERT_EQ(std_recv_vals[i], nap_recv_vals[i]);
     }
     
-    MPI_NAPDestroy(&nap_comm);
+    MPIX_NAPDestroy(&nap_comm);
 
     setenv("PPN", "16", 1);
 }

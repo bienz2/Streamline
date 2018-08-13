@@ -191,7 +191,7 @@ void update_indices(NAPComm* nap_comm, std::map<int, int>& send_global_to_local,
 
 // Initialize NAPComm* structure, to be used for any number of 
 // instances of communication
-void MPI_NAPinit(const int n_sends, const int* send_procs, const int* send_indptr, 
+void MPIX_NAPinit(const int n_sends, const int* send_procs, const int* send_indptr, 
         const int* send_indices, const int n_recvs, const int* recv_procs, 
         const int* recv_indptr, const int* global_send_indices, 
         const int* global_recv_indices, const MPI_Comm mpi_comm,
@@ -264,7 +264,7 @@ void MPI_NAPinit(const int n_sends, const int* send_procs, const int* send_indpt
 }
 
 // Destroy NAPComm* structure
-void MPI_NAPDestroy(NAPComm** nap_comm_ptr)
+void MPIX_NAPDestroy(NAPComm** nap_comm_ptr)
 {
     NAPComm* nap_comm = *nap_comm_ptr;
     topo_data* topo_info = nap_comm->topo_info;

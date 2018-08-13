@@ -7,15 +7,16 @@ set(CMAKE_CXX_STANDARD 11)
 set(CMAKE_BUILD_TYPE Release)
 
 option(CRAY "Running on Cray Machine" OFF)
-option(BGQ "Running on BGQ" OFF)
 if (CRAY)
     add_definitions (-DUSING_CRAY)
-elseif (BGQ)
-    add_definitions(-DUSING_BGQ)
 endif()
 
 find_package(MPI REQUIRED)
 include_directories(${MPI_INCLUDE_PATH})
+
+if (MPI_VERSION EQUAL 3)
+    add_definitions(-DUSING_MPI3)
+endif()
 
 set(GOOGLETEST_ROOT googletest CACHE STRING "Google Test source root")
 include_directories(

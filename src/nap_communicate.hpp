@@ -46,22 +46,22 @@ struct NAPData{
  ****
  ******************************************/
 template <typename T>
-void MPIX_intra_comm(comm_pkg* comm, T* send_data, T** recv_data,
-        int tag, MPI_Comm local_comm, MPI_Datatype send_type, 
-        MPI_Datatype recv_type, MPI_Request* send_requests, 
+static void MPIX_intra_comm(comm_pkg* comm, T* send_data, T** recv_data,
+        int tag, MPI_Comm local_comm, MPI_Datatype send_type,
+        MPI_Datatype recv_type, MPI_Request* send_requests,
         MPI_Request* recv_requests);
 template <typename T>
-void MPIX_inter_send(comm_pkg* comm, T* send_data,
+static void MPIX_inter_send(comm_pkg* comm, T* send_data,
         int tag, MPI_Comm mpi_comm, MPI_Datatype datatype,
         MPI_Request* send_request, T** send_buffer_ptr);
 template <typename T>
-void MPIX_inter_recv(comm_pkg* comm,
+static void MPIX_inter_recv(comm_pkg* comm,
         int tag, MPI_Comm mpi_comm, MPI_Datatype datatype,
         MPI_Request* recv_request, T** recv_buffer_ptr);
-void MPIX_inter_waitall(comm_pkg* comm, MPI_Request* send_requests, 
+static void MPIX_inter_waitall(comm_pkg* comm, MPI_Request* send_requests,
         MPI_Request* recv_requests);
 template <typename T>
-void MPIX_intra_recv_map(comm_pkg* comm, T* intra_recv_data,
+static void MPIX_intra_recv_map(comm_pkg* comm, T* intra_recv_data,
         T* inter_recv_data);
 
 
@@ -73,7 +73,7 @@ void MPIX_intra_recv_map(comm_pkg* comm, T* intra_recv_data,
 
 // Node-Aware Version of Isend
 template <typename T>
-void MPIX_INAPsend(T* buf, NAPComm* nap_comm,
+static void MPIX_INAPsend(T* buf, NAPComm* nap_comm,
         MPI_Datatype datatype, int tag,
         MPI_Comm comm, NAPData* nap_data)
 {
@@ -108,8 +108,8 @@ void MPIX_INAPsend(T* buf, NAPComm* nap_comm,
 
 // Node-Aware Version of Irecv
 template <typename T>
-void MPIX_INAPrecv(T* buf, NAPComm* nap_comm, 
-        MPI_Datatype datatype, int tag, 
+static void MPIX_INAPrecv(T* buf, NAPComm* nap_comm,
+        MPI_Datatype datatype, int tag,
         MPI_Comm comm, NAPData* nap_data)
 {
     NAPCommData<T>* nap_recv_data = new NAPCommData<T>();
@@ -119,7 +119,7 @@ void MPIX_INAPrecv(T* buf, NAPComm* nap_comm,
     MPI_Request* global_recv_requests = NULL;
     T* global_recv_buffer = NULL;
     MPI_Request* recv_requests = nap_comm->recv_requests;
- 
+
     // Initialize Irecvs for inter-node step (step 2 in nap comm)
     MPIX_inter_recv(nap_comm->global_comm, tag, comm, datatype,
             recv_requests, &global_recv_buffer);
@@ -132,7 +132,7 @@ void MPIX_INAPrecv(T* buf, NAPComm* nap_comm,
 
 // Wait for Node-Aware Isends and Irecvs to complete
 template <typename T, typename U>
-void MPIX_NAPwait(NAPComm* nap_comm, NAPData* nap_data)
+static void MPIX_NAPwait(NAPComm* nap_comm, NAPData* nap_data)
 {
     NAPCommData<T>* nap_send_data = (NAPCommData<T>*) nap_data->send_data;
     NAPCommData<U>* nap_recv_data = (NAPCommData<U>*) nap_data->recv_data;
@@ -186,8 +186,8 @@ void MPIX_NAPwait(NAPComm* nap_comm, NAPData* nap_data)
 
 // Intra-Node Communication
 template <typename T>
-void MPIX_intra_comm(comm_pkg* comm, T* send_data, T** recv_data,
-        int tag, MPI_Comm local_comm, MPI_Datatype send_type, MPI_Datatype recv_type, 
+static void MPIX_intra_comm(comm_pkg* comm, T* send_data, T** recv_data,
+        int tag, MPI_Comm local_comm, MPI_Datatype send_type, MPI_Datatype recv_type,
         MPI_Request* send_requests, MPI_Request* recv_requests)
 {
     if (comm->send_data->num_msgs + comm->recv_data->num_msgs == 0) return;
@@ -209,7 +209,7 @@ void MPIX_intra_comm(comm_pkg* comm, T* send_data, T** recv_data,
             idx = comm->send_data->indices[j];
             send_buffer[j] = send_data[idx];
         }
-        MPI_Isend(&send_buffer[start], end - start, send_type, proc, tag, 
+        MPI_Isend(&send_buffer[start], end - start, send_type, proc, tag,
                 local_comm, &send_requests[i]);
     }
     for (int i = 0; i < comm->recv_data->num_msgs; i++)
@@ -217,7 +217,7 @@ void MPIX_intra_comm(comm_pkg* comm, T* send_data, T** recv_data,
         proc = comm->recv_data->procs[i];
         start = comm->recv_data->indptr[i];
         end = comm->recv_data->indptr[i+1];
-        MPI_Irecv(&recv_buffer[start], end - start, recv_type, proc, tag, 
+        MPI_Irecv(&recv_buffer[start], end - start, recv_type, proc, tag,
                 local_comm, &recv_requests[i]);
   }
 
@@ -237,7 +237,7 @@ void MPIX_intra_comm(comm_pkg* comm, T* send_data, T** recv_data,
 
 // Inter-node Isend
 template <typename T>
-void MPIX_inter_send(comm_pkg* comm, T* send_data,
+static void MPIX_inter_send(comm_pkg* comm, T* send_data,
         int tag, MPI_Comm mpi_comm, MPI_Datatype mpi_type,
         MPI_Request* send_requests, T** send_buffer_ptr)
 {
@@ -257,7 +257,7 @@ void MPIX_inter_send(comm_pkg* comm, T* send_data,
             idx = comm->send_data->indices[j];
             send_buffer[j] = send_data[idx];
         }
-        MPI_Isend(&send_buffer[start], end - start, mpi_type, proc, tag, 
+        MPI_Isend(&send_buffer[start], end - start, mpi_type, proc, tag,
                 mpi_comm, &send_requests[i]);
     }
 
@@ -266,7 +266,7 @@ void MPIX_inter_send(comm_pkg* comm, T* send_data,
 
 // Inter-Node Irecvs
 template <typename T>
-void MPIX_inter_recv(comm_pkg* comm,
+static void MPIX_inter_recv(comm_pkg* comm,
         int tag, MPI_Comm mpi_comm, MPI_Datatype mpi_type,
         MPI_Request* recv_requests, T** recv_buffer_ptr)
 {
@@ -281,7 +281,7 @@ void MPIX_inter_recv(comm_pkg* comm,
         proc = comm->recv_data->procs[i];
         start = comm->recv_data->indptr[i];
         end = comm->recv_data->indptr[i+1];
-        MPI_Irecv(&recv_buffer[start], end - start, mpi_type, proc, tag, 
+        MPI_Irecv(&recv_buffer[start], end - start, mpi_type, proc, tag,
                 mpi_comm, &recv_requests[i]);
     }
 
@@ -289,7 +289,7 @@ void MPIX_inter_recv(comm_pkg* comm,
 }
 
 // Inter-Node Waitall
-void MPIX_inter_waitall(comm_pkg* comm, MPI_Request* send_requests, 
+static void MPIX_inter_waitall(comm_pkg* comm, MPI_Request* send_requests,
         MPI_Request* recv_requests)
 {
     if (comm->send_data->num_msgs)
@@ -305,7 +305,7 @@ void MPIX_inter_waitall(comm_pkg* comm, MPI_Request* send_requests,
 
 // Map received values to the appropriate locations
 template <typename T>
-void MPIX_intra_recv_map(comm_pkg* comm, T* intra_recv_data, T* inter_recv_data)
+static void MPIX_intra_recv_map(comm_pkg* comm, T* intra_recv_data, T* inter_recv_data)
 {
     int idx;
 

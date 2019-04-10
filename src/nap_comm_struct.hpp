@@ -9,7 +9,7 @@
 
 /******************************************
  ****
- **** Class Structs 
+ **** Class Structs
  ****
  ******************************************/
 
@@ -78,7 +78,7 @@ struct comm_data{
 struct comm_pkg{
     comm_data* send_data;
     comm_data* recv_data;
-    
+
     comm_pkg()
     {
         send_data = new comm_data();
@@ -92,7 +92,7 @@ struct comm_pkg{
     }
 };
 
-// Data required for an instance of node-aware communication 
+// Data required for an instance of node-aware communication
 struct NAPComm{
     comm_pkg* local_L_comm;
     comm_pkg* local_R_comm;
@@ -163,24 +163,24 @@ struct NAPComm{
 
 /******************************************
  ****
- **** Forward Declarations 
+ **** Forward Declarations
  ****
  ******************************************/
-void map_procs_to_nodes(NAPComm* nap_comm, const int orig_num_msgs, 
+static void map_procs_to_nodes(NAPComm* nap_comm, const int orig_num_msgs,
     const int* orig_procs, const int* orig_indptr,
-    std::vector<int>& msg_nodes, std::vector<int>& msg_node_to_local, 
+    std::vector<int>& msg_nodes, std::vector<int>& msg_node_to_local,
     MPI_Comm mpi_comm, bool incr = true);
-void form_local_comm(const int orig_num_sends, const int* orig_send_procs, 
-    const int* orig_send_ptr, const int* orig_send_indices, 
-    const std::vector<int>& nodes_to_local, comm_data* send_data, 
-    comm_data* recv_data, comm_data* local_data, 
-    std::vector<int>& recv_idx_nodes, MPI_Comm mpi_comm, 
+static void form_local_comm(const int orig_num_sends, const int* orig_send_procs,
+    const int* orig_send_ptr, const int* orig_send_indices,
+    const std::vector<int>& nodes_to_local, comm_data* send_data,
+    comm_data* recv_data, comm_data* local_data,
+    std::vector<int>& recv_idx_nodes, MPI_Comm mpi_comm,
     topo_data* topo_info, const int tag);
-void form_global_comm(comm_data* local_data, comm_data* global_data, 
-    std::vector<int>& local_data_nodes, MPI_Comm mpi_comm, 
+static void form_global_comm(comm_data* local_data, comm_data* global_data,
+    std::vector<int>& local_data_nodes, MPI_Comm mpi_comm,
     topo_data* topo_info, int tag);
-void update_global_comm(NAPComm* nap_comm, topo_data* topo_info, MPI_Comm mpi_comm);
-void update_indices(NAPComm* nap_comm, std::map<int, int>& send_global_to_local,
+static void update_global_comm(NAPComm* nap_comm, topo_data* topo_info, MPI_Comm mpi_comm);
+static void update_indices(NAPComm* nap_comm, std::map<int, int>& send_global_to_local,
         std::map<int, int>& recv_global_to_local);
 
 /******************************************
@@ -189,11 +189,11 @@ void update_indices(NAPComm* nap_comm, std::map<int, int>& send_global_to_local,
  ****
  ******************************************/
 
-// Initialize NAPComm* structure, to be used for any number of 
+// Initialize NAPComm* structure, to be used for any number of
 // instances of communication
-void MPIX_NAPinit(const int n_sends, const int* send_procs, const int* send_indptr, 
-        const int* send_indices, const int n_recvs, const int* recv_procs, 
-        const int* recv_indptr, const int* global_send_indices, 
+static void MPIX_NAPinit(const int n_sends, const int* send_procs, const int* send_indptr,
+        const int* send_indices, const int n_recvs, const int* recv_procs,
+        const int* recv_indptr, const int* global_send_indices,
         const int* global_recv_indices, const MPI_Comm mpi_comm,
         NAPComm** nap_comm_ptr)
 {
@@ -211,20 +211,20 @@ void MPIX_NAPinit(const int n_sends, const int* send_procs, const int* send_indp
     // Find global send nodes
     std::vector<int> send_nodes;
     std::vector<int> send_node_to_local;
-    map_procs_to_nodes(nap_comm, n_sends, send_procs, send_indptr, 
+    map_procs_to_nodes(nap_comm, n_sends, send_procs, send_indptr,
             send_nodes, send_node_to_local, mpi_comm, true);
 
     // Form initial send local comm
     std::vector<int> recv_idx_nodes;
     form_local_comm(n_sends, send_procs, send_indptr, global_send_indices, send_node_to_local,
             nap_comm->local_S_comm->send_data, nap_comm->local_S_comm->recv_data,
-            nap_comm->local_L_comm->send_data, recv_idx_nodes, mpi_comm, 
-            topology_info, 19483); 
+            nap_comm->local_L_comm->send_data, recv_idx_nodes, mpi_comm,
+            topology_info, 19483);
 
     // Form global send data
     form_global_comm(nap_comm->local_S_comm->recv_data, nap_comm->global_comm->send_data,
             recv_idx_nodes, mpi_comm, topology_info, 93284);
-            
+
     // Find global recv nodes
     std::vector<int> recv_nodes;
     std::vector<int> recv_node_to_local;
@@ -235,9 +235,9 @@ void MPIX_NAPinit(const int n_sends, const int* send_procs, const int* send_indp
     std::vector<int> send_idx_nodes;
     form_local_comm(n_recvs, recv_procs, recv_indptr, global_recv_indices, recv_node_to_local,
             nap_comm->local_R_comm->recv_data, nap_comm->local_R_comm->send_data,
-            nap_comm->local_L_comm->recv_data, send_idx_nodes, mpi_comm, 
+            nap_comm->local_L_comm->recv_data, send_idx_nodes, mpi_comm,
             topology_info, 32048);
-    
+
     // Form global recv data
     form_global_comm(nap_comm->local_R_comm->send_data, nap_comm->global_comm->recv_data,
             send_idx_nodes, mpi_comm, topology_info, 93284);
@@ -264,7 +264,7 @@ void MPIX_NAPinit(const int n_sends, const int* send_procs, const int* send_indp
 }
 
 // Destroy NAPComm* structure
-void MPIX_NAPDestroy(NAPComm** nap_comm_ptr)
+static void MPIX_NAPDestroy(NAPComm** nap_comm_ptr)
 {
     NAPComm* nap_comm = *nap_comm_ptr;
     topo_data* topo_info = nap_comm->topo_info;
@@ -275,17 +275,17 @@ void MPIX_NAPDestroy(NAPComm** nap_comm_ptr)
 
 /******************************************
  ****
- **** Helper Methods 
+ **** Helper Methods
  ****
  ******************************************/
 
 // Map original communication processes to nodes on which they lie
 // And assign local processes to each node
-void map_procs_to_nodes(NAPComm* nap_comm, const int orig_num_msgs, 
+static void map_procs_to_nodes(NAPComm* nap_comm, const int orig_num_msgs,
         const int* orig_procs, const int* orig_indptr,
-        std::vector<int>& msg_nodes, std::vector<int>& msg_node_to_local, 
+        std::vector<int>& msg_nodes, std::vector<int>& msg_node_to_local,
         MPI_Comm mpi_comm, bool incr)
-{    
+{
     int rank, num_procs;
     int local_rank, local_num_procs;
     MPI_Comm_rank(mpi_comm, &rank);
@@ -311,7 +311,7 @@ void map_procs_to_nodes(NAPComm* nap_comm, const int orig_num_msgs,
         node = get_node(proc, nap_comm->topo_info);
         node_sizes[node] += size;
     }
-    
+
     // Gather all send nodes and sizes among ranks local to node
     MPI_Allreduce(MPI_IN_PLACE, node_sizes.data(), num_nodes, MPI_INT, MPI_SUM, local_comm);
     for (int i = 0; i < num_nodes; i++)
@@ -321,7 +321,7 @@ void map_procs_to_nodes(NAPComm* nap_comm, const int orig_num_msgs,
             msg_nodes.push_back(i);
         }
     }
-    std::sort(msg_nodes.begin(), msg_nodes.end(), 
+    std::sort(msg_nodes.begin(), msg_nodes.end(),
             [&](const int i, const int j)
             {
                 return node_sizes[i] > node_sizes[j];
@@ -347,7 +347,7 @@ void map_procs_to_nodes(NAPComm* nap_comm, const int orig_num_msgs,
         if (local_proc == local_num_procs - 1 && inc == 1)
             inc = -1;
         else if (local_proc == 0 && inc == -1)
-           inc = 1; 
+           inc = 1;
         else
             local_proc += inc;
     }
@@ -356,13 +356,13 @@ void map_procs_to_nodes(NAPComm* nap_comm, const int orig_num_msgs,
 // Form step of local communication (either initial local_S communicator
 // or final local_L communicator) along with the corresponding portion
 // of the fully local (local_L) communicator.
-void form_local_comm(const int orig_num_sends, const int* orig_send_procs, 
-        const int* orig_send_ptr, const int* orig_send_indices, 
-        const std::vector<int>& nodes_to_local, comm_data* send_data, 
-        comm_data* recv_data, comm_data* local_data, 
-        std::vector<int>& recv_idx_nodes, MPI_Comm mpi_comm, 
+static void form_local_comm(const int orig_num_sends, const int* orig_send_procs,
+        const int* orig_send_ptr, const int* orig_send_indices,
+        const std::vector<int>& nodes_to_local, comm_data* send_data,
+        comm_data* recv_data, comm_data* local_data,
+        std::vector<int>& recv_idx_nodes, MPI_Comm mpi_comm,
         topo_data* topo_info, const int tag)
-{   
+{
     // MPI_Information
     int rank, num_procs;
     int local_rank, local_num_procs;
@@ -384,7 +384,7 @@ void form_local_comm(const int orig_num_sends, const int* orig_send_procs,
     std::vector<MPI_Request> send_requests;
     std::vector<int> send_sizes;
     std::vector<int> recv_buffer;
-    
+
     std::vector<int> orig_to_node;
     std::vector<int> local_idx;
 
@@ -414,7 +414,7 @@ void form_local_comm(const int orig_num_sends, const int* orig_send_procs,
             orig_to_node[i] = node;
             send_sizes[local_proc] += size;
         }
-        else 
+        else
         {
             orig_to_node[i] = -1;
             local_data->procs[local_data->num_msgs] = get_local_proc(global_proc, topo_info);
@@ -422,9 +422,9 @@ void form_local_comm(const int orig_num_sends, const int* orig_send_procs,
             local_data->num_msgs++;
             local_data->indptr[local_data->num_msgs] = local_data->size_msgs;
         }
-    }        
+    }
     local_data->indices = new int[local_data->size_msgs];
-    
+
     for (int i = 0; i < send_data->num_msgs; i++)
     {
         local_proc = send_data->procs[i];
@@ -432,7 +432,7 @@ void form_local_comm(const int orig_num_sends, const int* orig_send_procs,
         send_sizes[local_proc] = 0;
     }
     send_data->size_msgs = send_data->indptr[send_data->num_msgs];
-    
+
     // Allocate send_indices and fill vector
     send_data->indices = new int[send_data->size_msgs];
     std::vector<int> send_idx_node(send_data->size_msgs);
@@ -442,7 +442,7 @@ void form_local_comm(const int orig_num_sends, const int* orig_send_procs,
         node = orig_to_node[i];
         start = orig_send_ptr[i];
         end = orig_send_ptr[i+1];
-        if (node == -1) 
+        if (node == -1)
         {
             for (int j = start; j < end; j++)
             {
@@ -462,8 +462,8 @@ void form_local_comm(const int orig_num_sends, const int* orig_send_procs,
         }
     }
 
-    // Send 'local_S_comm send' info (to form local_S recv) 
-    MPI_Allreduce(MPI_IN_PLACE, send_sizes.data(), local_num_procs, 
+    // Send 'local_S_comm send' info (to form local_S recv)
+    MPI_Allreduce(MPI_IN_PLACE, send_sizes.data(), local_num_procs,
             MPI_INT, MPI_SUM, local_comm);
     recv_data->size_msgs = send_sizes[local_rank];
     recv_data->indices = new int[recv_data->size_msgs];
@@ -483,7 +483,7 @@ void form_local_comm(const int orig_num_sends, const int* orig_send_procs,
             send_buffer[ctr++] = send_data->indices[j];
             send_buffer[ctr++] = send_idx_node[j];
         }
-        MPI_Isend(&send_buffer[start_ctr], ctr - start_ctr , 
+        MPI_Isend(&send_buffer[start_ctr], ctr - start_ctr ,
                 MPI_INT, proc, tag, local_comm, &send_requests[i]);
         start_ctr = ctr;
     }
@@ -514,10 +514,10 @@ void form_local_comm(const int orig_num_sends, const int* orig_send_procs,
 }
 
 // Form portion of inter-node communication (data corresponding to
-// either global send or global recv), with node id currently in 
+// either global send or global recv), with node id currently in
 // place of process with which to communicate
-void form_global_comm(comm_data* local_data, comm_data* global_data, 
-        std::vector<int>& local_data_nodes, MPI_Comm mpi_comm, 
+static void form_global_comm(comm_data* local_data, comm_data* global_data,
+        std::vector<int>& local_data_nodes, MPI_Comm mpi_comm,
         topo_data* topo_info, int tag)
 {
     std::vector<int> tmp_send_indices;
@@ -568,7 +568,7 @@ void form_global_comm(comm_data* local_data, comm_data* global_data,
             global_data->indptr[global_data->num_msgs] = global_data->size_msgs;
         }
     }
-    
+
     global_data->indices = new int[global_data->size_msgs];
     for (int i = 0; i < local_data->num_msgs; i++)
     {
@@ -585,7 +585,7 @@ void form_global_comm(comm_data* local_data, comm_data* global_data,
 }
 
 // Replace send and receive processes with the node id's currently in their place
-void update_global_comm(NAPComm* nap_comm, topo_data* topo_info, MPI_Comm mpi_comm)
+static void update_global_comm(NAPComm* nap_comm, topo_data* topo_info, MPI_Comm mpi_comm)
 {
     int rank, num_procs;
     MPI_Comm_rank(mpi_comm, &rank);
@@ -607,7 +607,7 @@ void update_global_comm(NAPComm* nap_comm, topo_data* topo_info, MPI_Comm mpi_co
     MPI_Status recv_status;
     std::vector<int> send_nodes(num_nodes, 0);
     std::vector<int> recv_nodes(num_nodes, 0);
-    if (n_msgs) 
+    if (n_msgs)
     {
         requests = new MPI_Request[n_msgs];
         send_buffer = new int[n_msgs];
@@ -620,7 +620,7 @@ void update_global_comm(NAPComm* nap_comm, topo_data* topo_info, MPI_Comm mpi_co
         global_proc = get_global_proc(node, local_rank, topo_info);
         comm_procs[global_proc]++;
         send_buffer[i] = nap_comm->topo_info->rank_node;
-        MPI_Isend(&send_buffer[i], 1, MPI_INT, global_proc, send_tag, 
+        MPI_Isend(&send_buffer[i], 1, MPI_INT, global_proc, send_tag,
                 mpi_comm, &requests[i]);
     }
     for (int i = 0; i < n_recvs; i++)
@@ -629,7 +629,7 @@ void update_global_comm(NAPComm* nap_comm, topo_data* topo_info, MPI_Comm mpi_co
         global_proc = get_global_proc(node, local_rank, topo_info);
         comm_procs[global_proc]++;
         send_buffer[n_sends + i] = nap_comm->topo_info->rank_node;
-        MPI_Isend(&send_buffer[n_sends + i], 1, MPI_INT, global_proc, recv_tag, 
+        MPI_Isend(&send_buffer[n_sends + i], 1, MPI_INT, global_proc, recv_tag,
                 mpi_comm, &requests[n_sends + i]);
     }
 
@@ -669,17 +669,17 @@ void update_global_comm(NAPComm* nap_comm, topo_data* topo_info, MPI_Comm mpi_co
         node = nap_comm->global_comm->recv_data->procs[i];
         nap_comm->global_comm->recv_data->procs[i] = recv_nodes[node];
     }
-    
+
     delete[] requests;
     delete[] send_buffer;
 }
 
 // Update indices:
 // 1.) map initial sends to point to positions in original data
-// 2.) map internal communication steps to point to correct 
+// 2.) map internal communication steps to point to correct
 //     position in previously received data
 // 3.) map final receives to points in original recv data
-void form_global_map(const comm_data* map_data, std::map<int, int>& global_map)
+static void form_global_map(const comm_data* map_data, std::map<int, int>& global_map)
 {
     int idx;
 
@@ -689,7 +689,7 @@ void form_global_map(const comm_data* map_data, std::map<int, int>& global_map)
         global_map[idx] = i;
     }
 }
-void map_indices(comm_data* idx_data, std::map<int, int>& global_map)
+static void map_indices(comm_data* idx_data, std::map<int, int>& global_map)
 {
     int idx;
 
@@ -699,13 +699,13 @@ void map_indices(comm_data* idx_data, std::map<int, int>& global_map)
         idx_data->indices[i] = global_map[idx];
     }
 }
-void map_indices(comm_data* idx_data, const comm_data* map_data)
+static void map_indices(comm_data* idx_data, const comm_data* map_data)
 {
     std::map<int, int> global_map;
     form_global_map(map_data, global_map);
     map_indices(idx_data, global_map);
 }
-void update_indices(NAPComm* nap_comm, std::map<int, int>& send_global_to_local,
+static void update_indices(NAPComm* nap_comm, std::map<int, int>& send_global_to_local,
         std::map<int, int>& recv_global_to_local)
 {
     // Remove duplicates

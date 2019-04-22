@@ -1,5 +1,5 @@
 //TODO -- this file should be updated to not rely on environment variables
-//        but can I determine node from rank, local rank from rank, 
+//        but can I determine node from rank, local rank from rank,
 //        or global rank from local rank and node, without ordering?
 #ifndef NAPCOMM_TOPO_CRAY_HPP
 #define NAPCOMM_TOPO_CRAY_HPP
@@ -11,7 +11,7 @@
 #define FRR 2
 
 
-int get_ordering()
+static int get_ordering()
 {
     char* proc_layout_c = getenv("MPICH_RANK_REORDER_METHOD");
     if (proc_layout_c)
@@ -21,7 +21,7 @@ int get_ordering()
     else return SMP;
 }
 
-int get_node(const int proc, const int rank_ordering, const int num_nodes, const int ppn)
+static int get_node(const int proc, const int rank_ordering, const int num_nodes, const int ppn)
 {
     if (rank_ordering == RR)
     {
@@ -43,7 +43,7 @@ int get_node(const int proc, const int rank_ordering, const int num_nodes, const
         }
     }
     else
-    { 
+    {
         int rank;
         MPI_Comm_rank(MPI_COMM_WORLD, &rank);
         if (rank == 0)
@@ -54,7 +54,7 @@ int get_node(const int proc, const int rank_ordering, const int num_nodes, const
     }
 }
 
-int get_local_proc(const int proc, const int rank_ordering, const int num_nodes, const int ppn)
+static int get_local_proc(const int proc, const int rank_ordering, const int num_nodes, const int ppn)
 {
     if (rank_ordering == RR || rank_ordering == FRR)
     {
@@ -65,7 +65,7 @@ int get_local_proc(const int proc, const int rank_ordering, const int num_nodes,
         return proc % ppn;
     }
     else
-    { 
+    {
         int rank;
         MPI_Comm_rank(MPI_COMM_WORLD, &rank);
         if (rank == 0)
@@ -76,7 +76,7 @@ int get_local_proc(const int proc, const int rank_ordering, const int num_nodes,
     }
 }
 
-int get_global_proc(const int node, const int local_proc, const int rank_ordering, 
+static int get_global_proc(const int node, const int local_proc, const int rank_ordering,
         const int num_nodes, const int ppn)
 {
     if (rank_ordering == RR)
@@ -95,11 +95,11 @@ int get_global_proc(const int node, const int local_proc, const int rank_orderin
         }
         else
         {
-            return local_proc * num_nodes + num_nodes - node - 1;                
+            return local_proc * num_nodes + num_nodes - node - 1;
         }
     }
     else
-    { 
+    {
         int rank;
         MPI_Comm_rank(MPI_COMM_WORLD, &rank);
         if (rank == 0)

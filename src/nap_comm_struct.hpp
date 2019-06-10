@@ -39,7 +39,8 @@ struct comm_data{
 
     void init_num_data(int n)
     {
-        procs = new int[n];
+        if (n)
+            procs = new int[n];
         indptr = new int[n+1];
         indptr[0] = 0;
     }
@@ -140,24 +141,22 @@ struct NAPComm{
         if (tmp > buffer_size) buffer_size = tmp;
 
         // Find max number sent and recd
-        max_n = local_L_comm->send_data->num_msgs;
+        max_n = local_L_comm->send_data->num_msgs + 
+            global_comm->send_data->num_msgs;
         tmp = local_S_comm->send_data->num_msgs;
         if (tmp > max_n) max_n = tmp;
         tmp = local_R_comm->send_data->num_msgs;
         if (tmp > max_n) max_n = tmp;
-        tmp = global_comm->send_data->num_msgs;
-        if (tmp > max_n) max_n = tmp;
-        send_requests = new MPI_Request[max_n];
+        if (max_n) send_requests = new MPI_Request[max_n];
 
         // Find max number sent and recd
-        max_n = local_L_comm->recv_data->num_msgs;
+        max_n = local_L_comm->recv_data->num_msgs + 
+            global_comm->recv_data->num_msgs;
         tmp = local_S_comm->recv_data->num_msgs;
         if (tmp > max_n) max_n = tmp;
         tmp = local_R_comm->recv_data->num_msgs;
         if (tmp > max_n) max_n = tmp;
-        tmp = global_comm->recv_data->num_msgs;
-        if (tmp > max_n) max_n = tmp;
-        recv_requests = new MPI_Request[max_n];
+        if (max_n) recv_requests = new MPI_Request[max_n];
     }
 };
 
@@ -255,6 +254,7 @@ static void MPIX_NAPinit(const int n_sends, const int* send_procs, const int* se
     for (int i = 0; i < recv_idx_size; i++)
         recv_global_to_local[global_recv_indices[i]] = i;
     update_indices(nap_comm, send_global_to_local, recv_global_to_local);
+
 
     // Initialize final variable (MPI_Request arrays, etc.)
     nap_comm->finalize();
@@ -423,7 +423,8 @@ static void form_local_comm(const int orig_num_sends, const int* orig_send_procs
             local_data->indptr[local_data->num_msgs] = local_data->size_msgs;
         }
     }
-    local_data->indices = new int[local_data->size_msgs];
+    if (local_data->size_msgs)
+        local_data->indices = new int[local_data->size_msgs];
 
     for (int i = 0; i < send_data->num_msgs; i++)
     {
@@ -434,7 +435,8 @@ static void form_local_comm(const int orig_num_sends, const int* orig_send_procs
     send_data->size_msgs = send_data->indptr[send_data->num_msgs];
 
     // Allocate send_indices and fill vector
-    send_data->indices = new int[send_data->size_msgs];
+    if (send_data->size_msgs)
+        send_data->indices = new int[send_data->size_msgs];
     std::vector<int> send_idx_node(send_data->size_msgs);
     local_data->size_msgs = 0;
     for (int i = 0; i < orig_num_sends; i++)
@@ -466,7 +468,8 @@ static void form_local_comm(const int orig_num_sends, const int* orig_send_procs
     MPI_Allreduce(MPI_IN_PLACE, send_sizes.data(), local_num_procs,
             MPI_INT, MPI_SUM, local_comm);
     recv_data->size_msgs = send_sizes[local_rank];
-    recv_data->indices = new int[recv_data->size_msgs];
+    if (recv_data->size_msgs)
+        recv_data->indices = new int[recv_data->size_msgs];
     recv_idx_nodes.resize(recv_data->size_msgs);
 
     send_buffer.resize(2*send_data->size_msgs);
@@ -551,7 +554,8 @@ static void form_global_comm(comm_data* local_data, comm_data* global_data,
         }
         node_sizes[node] += size;
     }
-    global_data->procs = new int[global_data->num_msgs];
+    if (global_data->num_msgs)
+        global_data->procs = new int[global_data->num_msgs];
     global_data->indptr = new int[global_data->num_msgs+1];
     node_ctr.resize(global_data->num_msgs, 0);
 
@@ -569,7 +573,8 @@ static void form_global_comm(comm_data* local_data, comm_data* global_data,
         }
     }
 
-    global_data->indices = new int[global_data->size_msgs];
+    if (global_data->size_msgs)
+        global_data->indices = new int[global_data->size_msgs];
     for (int i = 0; i < local_data->num_msgs; i++)
     {
         node = local_data_nodes[i];

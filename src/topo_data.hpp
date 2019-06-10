@@ -32,7 +32,7 @@ struct topo_data{
 
         // Determine number of nodes
         // Assuming num_nodes divides num_procs evenly
-        num_nodes = num_procs / ppn;
+        num_nodes = ((num_procs-1) / ppn) + 1;
 #else
         char* ppn_char = getenv("PPN");
         ppn = 16;
@@ -40,9 +40,8 @@ struct topo_data{
         {
             ppn = atoi(ppn_char);
         }
-        num_nodes = num_procs / ppn;
+        num_nodes = ((num_procs-1) / ppn) + 1;
 #endif
-
         rank_ordering = get_ordering();  // If not Cray or BGQ, assuming SMP style order
         rank_node = get_node(rank, rank_ordering, num_nodes, ppn);
 

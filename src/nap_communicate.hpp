@@ -105,7 +105,7 @@ static void MPIX_INAPsend(T* buf, NAPComm* nap_comm,
     MPIX_intra_comm(nap_comm->local_S_comm, buf, &local_S_recv_data,
             local_S_tag, nap_comm->topo_info->local_comm, datatype, datatype,
             send_requests, recv_requests);
-
+    
     // Initialize Isends for inter-node step (step 2 in nap comm)
     MPIX_inter_send(nap_comm->global_comm, local_S_recv_data, tag,
             comm, datatype, send_requests, &global_send_buffer);
@@ -133,6 +133,7 @@ static void MPIX_INAPrecv(T* buf, NAPComm* nap_comm,
         MPI_Comm comm, NAPData* nap_data)
 {
     NAPCommData<T>* nap_recv_data = new NAPCommData<T>();
+    nap_recv_data->tag = tag;
     nap_recv_data->buf = buf;
     nap_recv_data->datatype = datatype;
     MPI_Request* global_recv_requests = NULL;
@@ -145,7 +146,6 @@ static void MPIX_INAPrecv(T* buf, NAPComm* nap_comm,
     // Initialize Irecvs for inter-node step (step 2 in nap comm)
     MPIX_inter_recv(nap_comm->global_comm, tag, comm, datatype,
             recv_requests, &global_recv_buffer);
-
 
     MPI_Request* L_recv_requests = &(recv_requests[nap_comm->global_comm->recv_data->num_msgs]);
     MPIX_intra_recv(nap_comm->local_L_comm, local_L_tag, nap_comm->topo_info->local_comm,

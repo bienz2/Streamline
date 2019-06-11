@@ -241,9 +241,10 @@ TEST(RandomCommTest, TestsInTests)
 
     // 2. Node-Aware Communication
     NAPData nap_data;
-    printf("Sending with tag %d\n", tag);
-    MPIX_INAPsend(send_vals.data(), nap_comm, MPI_INT, 20423, MPI_COMM_WORLD, &nap_data);
-    MPIX_INAPrecv(nap_recv_vals.data(), nap_comm, MPI_INT, 20423, MPI_COMM_WORLD, &nap_data);
+    MPIX_INAPsend(send_vals.data(), nap_comm, MPI_INT, 
+            20423, MPI_COMM_WORLD, &nap_data);
+    MPIX_INAPrecv(nap_recv_vals.data(), nap_comm, MPI_INT, 
+            20423, MPI_COMM_WORLD, &nap_data);
     MPIX_NAPwait<int, int>(nap_comm, &nap_data);
 
     // 3. Compare std_recv_vals and nap_recv_vals

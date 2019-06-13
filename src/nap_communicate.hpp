@@ -64,7 +64,7 @@ static void MPIX_intra_recv_map(comm_pkg* comm, char* intra_recv_data,
         void* inter_recv_data, MPI_Datatype datatype, MPI_Comm mpi_comm);
 
 
-char* unpack(char* packed_buf, int size, MPI_Datatype datatype, MPI_Comm comm)
+static char* MPIX_NAP_unpack(char* packed_buf, int size, MPI_Datatype datatype, MPI_Comm comm)
 {
     int type_size, pack_size;
     int ctr = 0;
@@ -116,7 +116,7 @@ static void MPIX_INAPsend(void* buf, NAPComm* nap_comm,
     if (nap_comm->local_S_comm->recv_data->size_msgs)
     {
         // Unpack previous recv into void*
-        char* unpacked_buf = unpack(local_S_recv_data, 
+        char* unpacked_buf = MPIX_NAP_unpack(local_S_recv_data, 
                 nap_comm->local_S_comm->recv_data->size_msgs,
                 datatype, comm);
 
@@ -201,7 +201,6 @@ static void MPIX_NAPwait(NAPComm* nap_comm, NAPData* nap_data)
     int local_R_tag = nap_recv_data->tag + 2;
 
     MPIX_step_waitall(nap_comm->global_comm, send_requests, recv_requests);
-
     if (nap_comm->local_L_comm->send_data->num_msgs)
         L_send_requests = &(send_requests[nap_comm->global_comm->send_data->num_msgs]);
     if (nap_comm->local_L_comm->recv_data->num_msgs)
@@ -230,7 +229,7 @@ static void MPIX_NAPwait(NAPComm* nap_comm, NAPData* nap_data)
     if (nap_comm->global_comm->recv_data->size_msgs)
     {
         // Unpack previous recv into void*
-        unpacked_buf = unpack(global_recv_buffer, 
+        unpacked_buf = MPIX_NAP_unpack(global_recv_buffer, 
                 nap_comm->global_comm->recv_data->size_msgs,
                 recv_type, mpi_comm);
     }
@@ -249,7 +248,6 @@ static void MPIX_NAPwait(NAPComm* nap_comm, NAPData* nap_data)
                 recv_type, nap_comm->topo_info->local_comm);
         delete[] local_R_recv_data;
     }
-    int* b = reinterpret_cast<int*>(nap_recv_data->buf);
     nap_recv_data->buf = NULL;
     delete nap_send_data;
     delete nap_recv_data;
@@ -266,11 +264,11 @@ static void MPIX_NAPwait(NAPComm* nap_comm, NAPData* nap_data)
 static void MPIX_step_waitall(comm_pkg* comm, MPI_Request* send_requests,
         MPI_Request* recv_requests)
 {
+    int flag;
     if (comm->send_data->num_msgs)
     {
         MPI_Waitall(comm->send_data->num_msgs, send_requests, MPI_STATUSES_IGNORE);
     }
-
     if (comm->recv_data->num_msgs)
     {
         MPI_Waitall(comm->recv_data->num_msgs, recv_requests, MPI_STATUSES_IGNORE);

@@ -27,11 +27,13 @@ struct MPIX_Data
     std::vector<int> buffer;
 };
 
-void standard_communication(std::vector<int>& send_vals, 
-        std::vector<int>& recv_vals, int tag,
+template <typename T>
+void standard_communication(std::vector<T>& send_vals, 
+        std::vector<T>& recv_vals, int tag, MPI_Datatype mpi_type, 
         MPIX_Data* send_data, MPIX_Data* recv_data)
 {
     int proc, start, end, idx;
+    std::vector<T> buf(send_data->size_msgs);
 
     for (int i = 0; i < send_data->num_msgs; i++)
     {
@@ -41,9 +43,9 @@ void standard_communication(std::vector<int>& send_vals,
         for (int j = start; j < end; j++)
         {
             idx = send_data->indices[j];
-            send_data->buffer[j] = send_vals[idx];
+            buf[j] = send_vals[idx];
         }
-        MPI_Isend(&send_data->buffer[start], end - start, MPI_INT, proc, tag,
+        MPI_Isend(&(buf[start]), end - start, mpi_type, proc, tag,
                 MPI_COMM_WORLD, &send_data->requests[i]);
     }
 
@@ -52,7 +54,7 @@ void standard_communication(std::vector<int>& send_vals,
         proc = recv_data->procs[i];
         start = recv_data->indptr[i];
         end = recv_data->indptr[i+1];
-        MPI_Irecv(&recv_vals[start], end - start, MPI_INT, proc, tag, 
+        MPI_Irecv(&recv_vals[start], end - start, mpi_type, proc, tag, 
                 MPI_COMM_WORLD, &recv_data->requests[i]);
     }
     
@@ -237,7 +239,7 @@ TEST(RandomCommTest, TestsInTests)
     std::vector<int> nap_recv_vals(recv_data.size_msgs);
 
     // 1. Standard Communication
-    standard_communication(send_vals, std_recv_vals, 49345, &send_data, &recv_data);
+    standard_communication(send_vals, std_recv_vals, 49345, MPI_INT, &send_data, &recv_data);
 
     // 2. Node-Aware Communication
     NAPData nap_data;
@@ -245,13 +247,35 @@ TEST(RandomCommTest, TestsInTests)
     MPIX_INAPrecv(nap_recv_vals.data(), nap_comm, MPI_INT, 20423, MPI_COMM_WORLD, &nap_data);
     MPIX_NAPwait(nap_comm, &nap_data);
 
-
     // 3. Compare std_recv_vals and nap_recv_vals
     for (int i = 0; i < recv_data.size_msgs; i++)
     {
         ASSERT_EQ(std_recv_vals[i], nap_recv_vals[i]);
     }
     
+    std::vector<double> send_d_vals(local_size);
+    val = local_size*rank;
+    for (int i = 0; i < local_size; i++)
+    {
+        send_vals[i] = val++;
+    }
+    std::vector<double> std_recv_d_vals(recv_data.size_msgs);
+    std::vector<double> nap_recv_d_vals(recv_data.size_msgs);
+
+    // 1. Standard Communication
+    standard_communication(send_d_vals, std_recv_d_vals, 49345, MPI_INT, &send_data, &recv_data);
+
+    // 2. Node-Aware Communication
+    MPIX_INAPsend(send_d_vals.data(), nap_comm, MPI_INT, 20423, MPI_COMM_WORLD, &nap_data);
+    MPIX_INAPrecv(nap_recv_d_vals.data(), nap_comm, MPI_INT, 20423, MPI_COMM_WORLD, &nap_data);
+    MPIX_NAPwait(nap_comm, &nap_data);
+
+    // 3. Compare std_recv_vals and nap_recv_vals
+    for (int i = 0; i < recv_data.size_msgs; i++)
+    {
+        ASSERT_NEAR(std_recv_d_vals[i], nap_recv_d_vals[i], 1e-10);
+    }
+
     MPIX_NAPDestroy(&nap_comm);
 
     setenv("PPN", "16", 1);

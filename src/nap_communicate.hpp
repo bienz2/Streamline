@@ -141,7 +141,6 @@ static void MPIX_INAPsend(void* buf, NAPComm* nap_comm,
     nap_send_data->local_L_buffer = L_send_buffer;
     nap_data->send_data = nap_send_data;
 
-
     if (local_S_recv_data) delete[] local_S_recv_data;
 }
 
@@ -194,10 +193,10 @@ static void MPIX_NAPwait(NAPComm* nap_comm, NAPData* nap_data)
     char* global_recv_buffer = nap_recv_data->global_buffer;
     MPI_Request* send_requests = nap_comm->send_requests;
     MPI_Request* recv_requests = nap_comm->recv_requests;
-    MPI_Datatype send_type = nap_send_data->datatype;
-    MPI_Datatype recv_type = nap_recv_data->datatype;
     MPI_Request* L_send_requests = NULL;
     MPI_Request* L_recv_requests = NULL;
+    MPI_Datatype send_type = nap_send_data->datatype;
+    MPI_Datatype recv_type = nap_recv_data->datatype;
 
     int local_R_tag = nap_recv_data->tag + 2;
 

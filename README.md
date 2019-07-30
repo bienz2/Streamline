@@ -28,6 +28,17 @@ make
 make test
 ```
 
+# Citing
+
+<pre>
+@MISC{BiOl2018,
+      author = {Bienz, Amanda and Olson, Luke N.},
+      title = {Node-Aware MPI},
+      year = {2018},
+      url = {https://github.com/bienz2/Node_Aware_MPI},
+      }
+</pre>
+
 # License
 
 This code is distributed under BSD: http://opensource.org/licenses/BSD-2-Clause

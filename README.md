@@ -1,8 +1,8 @@
 [![Build Status](https://travis-ci.org/bienz2/Node_Aware_MPI.svg?branch=master)](https://travis-ci.org/bienz2/Node_Aware_MPI)
  
-# Node Aware MPI
+# Streamline MPI Wrapper
 
-Node-Aware MPI is a lightweight communication package, which converts standard 
+Streamline is a lightweight communication package, which converts standard 
 MPI Isends and Irecvs into three step node-aware communication.  This library 
 reduces the number and size of messages to be injected into the network.
 

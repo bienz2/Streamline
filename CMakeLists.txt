@@ -5,6 +5,7 @@ list(APPEND CMAKE_MODULE_PATH ${CMAKE_SOURCE_DIR}/cmake)
 enable_language(CXX)
 set(CMAKE_CXX_STANDARD 11)
 set(CMAKE_BUILD_TYPE Release)
+set(CMAKE_CXX_FLAGS "-O3")
 
 option(CRAY "Running on Cray Machine" OFF)
 if (CRAY)
@@ -33,6 +34,10 @@ endforeach()
 add_library(googletest STATIC ${GOOGLETEST_SOURCES})
 
 include_directories(".")
+
+add_subdirectory(src)
+
 enable_testing()
 add_subdirectory(tests)
+add_subdirectory(examples)
 

@@ -15,6 +15,12 @@ int main(int argc, char *argv[])
     MPI_Comm_size(MPI_COMM_WORLD, &num_procs);
 
     int ppn = 16;
+    char* PPN_c = getenv("PPN");
+    if (PPN_c)
+    {
+        ppn = atoi(PPN_c);
+    }
+
     double t0, tfinal;
 
     MPI_Comm local_comm;
